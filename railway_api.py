@@ -132,12 +132,19 @@ async def ingest_document(doc_request: DocumentRequest):
     """Ingest a document for annotation (minimal implementation)"""
     logger.info(f"Document ingestion requested: {doc_request.doc_id}")
     
-    # Minimal implementation for Railway demo
+    # Calculate sentence count (simple split by period)
+    sentences = [s.strip() for s in doc_request.text.split('.') if s.strip()]
+    
+    # Create response with more realistic data
     return {
         "doc_id": doc_request.doc_id,
-        "sentence_count": len(doc_request.text.split('.')),
-        "message": "Document received successfully (Railway demo mode)",
-        "status": "processed"
+        "title": doc_request.title or f"Document {doc_request.doc_id}",
+        "source": doc_request.source,
+        "sentence_count": len(sentences),
+        "sentences": len(sentences),
+        "message": "Document ingested successfully",
+        "status": "processed",
+        "created_at": datetime.now().isoformat()
     }
 
 @app.post("/candidates/generate")
@@ -166,6 +173,56 @@ async def generate_candidates(doc_id: str = "demo", sent_id: str = "s1", text: s
         candidates=demo_candidates,
         processing_time=0.1
     )
+
+@app.get("/documents")
+async def get_documents(limit: int = 50, offset: int = 0, search: Optional[str] = None):
+    """Get documents list"""
+    logger.info(f"Documents list requested: limit={limit}, offset={offset}, search={search}")
+    
+    # Demo documents for Railway deployment
+    demo_documents = [
+        {
+            "id": 1,
+            "doc_id": "demo_001",
+            "title": "Shrimp Disease Management Guidelines",
+            "source": "manual",
+            "created_at": "2024-01-15T10:00:00Z",
+            "sentence_count": 45
+        },
+        {
+            "id": 2,
+            "doc_id": "demo_002", 
+            "title": "WSSV Prevention Strategies",
+            "source": "upload",
+            "created_at": "2024-01-14T15:30:00Z",
+            "sentence_count": 32
+        },
+        {
+            "id": 3,
+            "doc_id": "demo_003",
+            "title": "Aquaculture Best Practices",
+            "source": "manual",
+            "created_at": "2024-01-13T09:15:00Z",
+            "sentence_count": 68
+        }
+    ]
+    
+    # Apply search filter if provided
+    if search:
+        demo_documents = [
+            doc for doc in demo_documents 
+            if search.lower() in doc["title"].lower() or search.lower() in doc["doc_id"].lower()
+        ]
+    
+    # Apply pagination
+    paginated_docs = demo_documents[offset:offset + limit]
+    
+    return {
+        "documents": paginated_docs,
+        "total": len(demo_documents),
+        "limit": limit,
+        "offset": offset
+    }
 
 @app.get("/statistics/overview")
 async def get_statistics():
