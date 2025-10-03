@@ -98,22 +98,6 @@ async def root():
         }
     }
 
-@app.get("/{full_path:path}")
-async def serve_frontend_routes(full_path: str):
-    """Serve React frontend for all non-API routes"""
-    # Skip API routes
-    if full_path.startswith(("health", "docs", "openapi", "candidates", "documents", "statistics", "ready")):
-        raise HTTPException(status_code=404, detail="API endpoint not found")
-    
-    # Try to serve React frontend
-    if ui_build_path.exists():
-        index_file = ui_build_path / "index.html"
-        if index_file.exists():
-            return FileResponse(str(index_file))
-    
-    # Fallback
-    raise HTTPException(status_code=404, detail="Frontend not available")
-
 @app.get("/ready")
 async def readiness_check():
     """Readiness check for Railway"""
@@ -234,6 +218,19 @@ async def get_statistics():
         "port": os.getenv("PORT", "8000"),
         "status": "running"
     }
+
+# Catch-all route MUST be last to serve React frontend for client-side routing
+@app.get("/{full_path:path}")
+async def serve_frontend_routes(full_path: str):
+    """Serve React frontend for all non-API routes"""
+    # Try to serve React frontend
+    if ui_build_path.exists():
+        index_file = ui_build_path / "index.html"
+        if index_file.exists():
+            return FileResponse(str(index_file))
+    
+    # Fallback
+    raise HTTPException(status_code=404, detail="Frontend not available")
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
