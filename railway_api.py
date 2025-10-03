@@ -292,9 +292,14 @@ async def get_statistics():
     }
 
 @app.get("/api/triage/queue")
-async def get_triage_queue(limit: int = 50, offset: int = 0, status: Optional[str] = None):
+async def get_triage_queue(
+    limit: int = 50, 
+    offset: int = 0, 
+    status: Optional[str] = None,
+    sort_by: Optional[str] = None
+):
     """Get triage queue items from storage"""
-    logger.info(f"Triage queue requested: limit={limit}, offset={offset}, status={status} (Storage: {len(triage_queue_store)} items)")
+    logger.info(f"Triage queue requested: limit={limit}, offset={offset}, status={status}, sort_by={sort_by} (Storage: {len(triage_queue_store)} items)")
     
     # Start with all stored triage items
     all_items = triage_queue_store.copy()
@@ -345,12 +350,19 @@ async def get_triage_queue(limit: int = 50, offset: int = 0, status: Optional[st
         ]
         all_items = demo_items
     
-    # Apply status filter if provided
-    if status and status != "all":
+    # Apply status filter if provided (ignore "undefined" values from frontend)
+    if status and status not in ["all", "undefined", "null"]:
         all_items = [item for item in all_items if item.get("status") == status]
+        logger.info(f"Filtered by status '{status}': {len(all_items)} items")
     
-    # Sort by priority score (highest first) then by created_at
-    all_items.sort(key=lambda x: (-x.get("priority_score", 0), x.get("created_at", "")))
+    # Apply sorting
+    if sort_by == "priority":
+        all_items.sort(key=lambda x: -x.get("priority_score", 0))
+    elif sort_by == "created_at":
+        all_items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    else:
+        # Default sort: by priority score (highest first) then by created_at
+        all_items.sort(key=lambda x: (-x.get("priority_score", 0), x.get("created_at", "")))
     
     # Apply pagination
     paginated_items = all_items[offset:offset + limit]
