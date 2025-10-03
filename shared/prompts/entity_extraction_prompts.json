@@ -1,0 +1,74 @@
+{
+  "entity_extraction": {
+    "system_prompt": "You are an expert annotator for shrimp aquaculture scientific literature. Extract entities with high precision.",
+    "main_prompt": "Extract all domain-relevant entities from this sentence. Return ONLY valid JSON.\n\nAllowed entity types:\n- SPECIES: Organism names (shrimp species, bacteria)\n- PATHOGEN: Disease agents (Vibrio, viruses, parasites)  \n- DISEASE: Clinical conditions (AHPND, WSD, TPD)\n- GENE: Genetic markers and genes\n- TREATMENT: Medications, probiotics, interventions\n- MEASUREMENT: Numbers with units (30 ppt, 28°C)\n- LIFE_STAGE: Development stages (PL15, juvenile)\n- MANAGEMENT_PRACTICE: Farming practices\n- ENVIRONMENTAL_PARAM: Water parameters\n- LOCATION: Geographic/facility locations\n- TRAIT: Measurable characteristics\n\nSentence: \"{sentence}\"\n\nOutput format:\n{{\"entities\": [{{\"text\": \"...\", \"label\": \"...\", \"start\": int, \"end\": int, \"confidence\": 0.0-1.0}}]}}",
+    "few_shot_examples": [
+      {
+        "sentence": "Vibrio parahaemolyticus causes AHPND in Penaeus vannamei post-larvae at 28°C.",
+        "output": {
+          "entities": [
+            {"text": "Vibrio parahaemolyticus", "label": "PATHOGEN", "start": 0, "end": 23, "confidence": 0.95},
+            {"text": "AHPND", "label": "DISEASE", "start": 31, "end": 36, "confidence": 0.95},
+            {"text": "Penaeus vannamei", "label": "SPECIES", "start": 40, "end": 56, "confidence": 0.95},
+            {"text": "post-larvae", "label": "LIFE_STAGE", "start": 57, "end": 68, "confidence": 0.90},
+            {"text": "28°C", "label": "MEASUREMENT", "start": 72, "end": 76, "confidence": 0.95}
+          ]
+        }
+      },
+      {
+        "sentence": "Treatment with florfenicol at 10 mg/kg improved survival rate in infected shrimp.",
+        "output": {
+          "entities": [
+            {"text": "florfenicol", "label": "TREATMENT", "start": 15, "end": 26, "confidence": 0.95},
+            {"text": "10 mg/kg", "label": "MEASUREMENT", "start": 30, "end": 38, "confidence": 0.95},
+            {"text": "survival rate", "label": "TRAIT", "start": 48, "end": 61, "confidence": 0.90},
+            {"text": "shrimp", "label": "SPECIES", "start": 74, "end": 80, "confidence": 0.85}
+          ]
+        }
+      },
+      {
+        "sentence": "The PvIGF gene was associated with growth rate and disease resistance in SPR lines.",
+        "output": {
+          "entities": [
+            {"text": "PvIGF", "label": "GENE", "start": 4, "end": 9, "confidence": 0.95},
+            {"text": "growth rate", "label": "TRAIT", "start": 36, "end": 47, "confidence": 0.90},
+            {"text": "disease resistance", "label": "TRAIT", "start": 52, "end": 70, "confidence": 0.90},
+            {"text": "SPR lines", "label": "SPECIES", "start": 74, "end": 83, "confidence": 0.85}
+          ]
+        }
+      }
+    ],
+    "temperature": 0.1,
+    "max_tokens": 500
+  },
+  
+  "relation_extraction": {
+    "system_prompt": "You are an expert at extracting relationships between entities in shrimp aquaculture text.",
+    "main_prompt": "Given the sentence and identified entities, extract relationships using these predicates:\n- infected_by: host infected by pathogen\n- causes: pathogen causes disease\n- treated_with: disease/condition treated with intervention\n- resistant_to: organism/gene provides resistance\n- associated_with: general association\n- measurement_of: measurement describes parameter\n- located_in: spatial relationship\n- affects_trait: factor affecting characteristic\n- has_variant: genetic variant\n\nSentence: \"{sentence}\"\nEntities: {entities}\n\nReturn ONLY valid JSON:\n{{\"relations\": [{{\"head\": entity_index, \"tail\": entity_index, \"label\": \"...\", \"evidence\": \"text supporting relation\", \"confidence\": 0.0-1.0}}]}}",
+    "few_shot_examples": [
+      {
+        "sentence": "Vibrio parahaemolyticus causes AHPND in Penaeus vannamei.",
+        "entities": [
+          {"index": 0, "text": "Vibrio parahaemolyticus", "label": "PATHOGEN"},
+          {"index": 1, "text": "AHPND", "label": "DISEASE"},
+          {"index": 2, "text": "Penaeus vannamei", "label": "SPECIES"}
+        ],
+        "output": {
+          "relations": [
+            {"head": 0, "tail": 1, "label": "causes", "evidence": "causes", "confidence": 0.95},
+            {"head": 2, "tail": 0, "label": "infected_by", "evidence": "in", "confidence": 0.90}
+          ]
+        }
+      }
+    ],
+    "temperature": 0.1,
+    "max_tokens": 500
+  },
+  
+  "topic_suggestion": {
+    "system_prompt": "You are an expert at classifying shrimp aquaculture text into research topics.",
+    "main_prompt": "Classify this text into relevant topics from this list:\n- T_DISEASE: Disease & Pathology\n- T_TREATMENT: Treatment & Therapeutics  \n- T_GENETICS: Genetics & Breeding\n- T_MANAGEMENT: Farm Management\n- T_ENVIRONMENT: Environmental Parameters\n- T_REPRODUCTION: Reproduction & Hatchery\n- T_NUTRITION: Nutrition & Feed\n- T_BIOSECURITY: Biosecurity & Prevention\n- T_ECONOMICS: Economics & Markets\n- T_DIAGNOSTICS: Diagnostics & Detection\n\nDocument title: \"{title}\"\nText: \"{text}\"\n\nReturn 1-3 most relevant topics with confidence scores and justification keywords.\n\nOutput format:\n{{\"topics\": [{{\"topic_id\": \"T_...\", \"score\": 0.0-1.0, \"keywords\": [\"keyword1\", \"keyword2\"]}}]}}",
+    "temperature": 0.2,
+    "max_tokens": 300
+  }
+}

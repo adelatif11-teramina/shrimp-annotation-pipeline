@@ -1,0 +1,70 @@
+# Local Development Docker Compose
+# Simplified version for offline/local use
+
+version: '3.8'
+
+services:
+  # Ollama for local LLM (optional)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: shrimp-ollama-local
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # API Service (local mode)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    container_name: shrimp-api-local
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/local:/app/data/local
+      - ./config:/app/config
+      - ./.env.local:/app/.env.local
+    environment:
+      - DATABASE_URL=sqlite:///./data/local/annotations.db
+      - LLM_PROVIDER=ollama
+      - OLLAMA_HOST=http://ollama:11434
+      - CACHE_TYPE=memory
+    depends_on:
+      - ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # UI Service
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile.local
+    container_name: shrimp-ui-local  
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - ./ui/src:/app/src
+      - ./ui/public:/app/public
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+    driver: local

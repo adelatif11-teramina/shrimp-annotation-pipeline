@@ -1,0 +1,53 @@
+# Core dependencies (Python 3.8+ required)
+pydantic>=2.0
+dataclasses-json>=0.5.7
+typing-extensions>=4.0
+
+# Document processing
+nltk>=3.8
+spacy>=3.5
+# Run after install: python -m spacy download en_core_web_sm
+
+# LLM support
+openai>=1.0  # For GPT models
+requests>=2.31  # For Ollama
+
+# Annotation UI
+label-studio>=1.8.0
+label-studio-sdk>=0.0.30
+
+# Database
+sqlalchemy>=2.0
+psycopg2-binary>=2.9  # PostgreSQL
+redis>=4.5  # For queue management
+
+# Data processing
+pandas>=2.0
+numpy>=1.24
+jsonlines>=3.1
+
+# API and web
+fastapi>=0.100
+uvicorn>=0.23
+httpx>=0.24
+
+# Quality metrics
+scikit-learn>=1.3  # For IAA metrics
+scipy>=1.10
+
+# Utilities
+tqdm>=4.65
+python-dotenv>=1.0
+pyyaml>=6.0
+click>=8.1  # CLI
+
+# Testing
+pytest>=7.4
+pytest-asyncio>=0.21
+pytest-cov>=4.1
+
+# Development
+black>=23.7
+flake8>=6.0
+mypy>=1.4
+ipython>=8.14

@@ -1,0 +1,188 @@
+{
+  "schemas": {
+    "document": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "required": ["doc_id", "source", "sentences"],
+      "properties": {
+        "doc_id": {"type": "string", "pattern": "^[a-zA-Z0-9_-]+$"},
+        "source": {"type": "string", "enum": ["paper", "report", "hatchery_log", "manual", "dataset"]},
+        "title": {"type": "string"},
+        "pub_date": {"type": "string", "format": "date"},
+        "raw_text": {"type": "string"},
+        "sentences": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["sent_id", "start", "end", "text"],
+            "properties": {
+              "sent_id": {"type": "string"},
+              "start": {"type": "integer", "minimum": 0},
+              "end": {"type": "integer", "minimum": 0},
+              "text": {"type": "string"}
+            }
+          }
+        },
+        "metadata": {"type": "object"}
+      }
+    },
+    
+    "llm_candidate": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "required": ["doc_id", "sent_id", "candidates"],
+      "properties": {
+        "doc_id": {"type": "string"},
+        "sent_id": {"type": "string"},
+        "candidates": {
+          "type": "object",
+          "properties": {
+            "entities": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["cid", "text", "label", "start", "end", "confidence"],
+                "properties": {
+                  "cid": {"type": "integer"},
+                  "text": {"type": "string"},
+                  "label": {"$ref": "#/definitions/entity_label"},
+                  "start": {"type": "integer", "minimum": 0},
+                  "end": {"type": "integer", "minimum": 0},
+                  "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+                }
+              }
+            },
+            "relations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["rid", "head_cid", "tail_cid", "label", "confidence"],
+                "properties": {
+                  "rid": {"type": "integer"},
+                  "head_cid": {"type": "integer"},
+                  "tail_cid": {"type": "integer"},
+                  "label": {"$ref": "#/definitions/relation_label"},
+                  "evidence": {"type": "string"},
+                  "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+                }
+              }
+            },
+            "topics": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["topic_id", "label", "score"],
+                "properties": {
+                  "topic_id": {"$ref": "#/definitions/topic_id"},
+                  "label": {"type": "string"},
+                  "score": {"type": "number", "minimum": 0, "maximum": 1},
+                  "keywords": {"type": "array", "items": {"type": "string"}}
+                }
+              }
+            }
+          }
+        },
+        "model_info": {
+          "type": "object",
+          "properties": {
+            "model": {"type": "string"},
+            "version": {"type": "string"},
+            "temperature": {"type": "number"}
+          }
+        },
+        "timestamp": {"type": "string", "format": "date-time"}
+      }
+    },
+    
+    "gold_annotation": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "required": ["doc_id", "sent_id", "entities", "relations", "annotator", "status", "timestamp"],
+      "properties": {
+        "doc_id": {"type": "string"},
+        "sent_id": {"type": "string"},
+        "entities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "text", "label", "start", "end"],
+            "properties": {
+              "id": {"type": "string"},
+              "text": {"type": "string"},
+              "label": {"$ref": "#/definitions/entity_label"},
+              "start": {"type": "integer", "minimum": 0},
+              "end": {"type": "integer", "minimum": 0},
+              "canonical": {"type": "string"},
+              "confidence": {"type": "string", "enum": ["high", "medium", "low"]}
+            }
+          }
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "head", "tail", "label"],
+            "properties": {
+              "id": {"type": "string"},
+              "head": {"type": "string"},
+              "tail": {"type": "string"},
+              "label": {"$ref": "#/definitions/relation_label"},
+              "evidence_span": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "polarity": {"type": "string", "enum": ["positive", "negative", "speculative"]}
+            }
+          }
+        },
+        "topics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["topic_id"],
+            "properties": {
+              "topic_id": {"$ref": "#/definitions/topic_id"},
+              "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+              "justification": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        },
+        "annotator": {"type": "string", "format": "email"},
+        "status": {"type": "string", "enum": ["accepted", "modified", "rejected", "needs_review"]},
+        "timestamp": {"type": "string", "format": "date-time"},
+        "notes": {"type": "string"}
+      }
+    }
+  },
+  
+  "definitions": {
+    "entity_label": {
+      "type": "string",
+      "enum": [
+        "SPECIES", "PATHOGEN", "DISEASE", "GENE", "TREATMENT", 
+        "MEASUREMENT", "LIFE_STAGE", "MANAGEMENT_PRACTICE", 
+        "ENVIRONMENTAL_PARAM", "LOCATION", "TRAIT"
+      ]
+    },
+    
+    "relation_label": {
+      "type": "string",
+      "enum": [
+        "infected_by", "causes", "treated_with", "resistant_to",
+        "associated_with", "measurement_of", "located_in", 
+        "affects_trait", "has_variant"
+      ]
+    },
+    
+    "topic_id": {
+      "type": "string",
+      "enum": [
+        "T_DISEASE", "T_TREATMENT", "T_GENETICS", "T_MANAGEMENT",
+        "T_ENVIRONMENT", "T_REPRODUCTION", "T_NUTRITION", 
+        "T_BIOSECURITY", "T_ECONOMICS", "T_DIAGNOSTICS"
+      ]
+    }
+  }
+}

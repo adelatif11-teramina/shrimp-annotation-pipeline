@@ -1,0 +1,98 @@
+# Local Development Configuration
+# This configuration runs completely offline with no external dependencies
+
+# Database Configuration
+database:
+  type: sqlite
+  path: ./data/local/annotations.db
+  echo: false  # Set to true for SQL debugging
+  pool_size: 5
+
+# Cache Configuration (No Redis required)
+cache:
+  type: memory  # Use in-memory cache instead of Redis
+  max_size: 1000  # Maximum cached items
+  ttl: 3600  # Time to live in seconds
+
+# LLM Configuration
+llm:
+  provider: ollama  # Use local Ollama (or 'rules_only' if Ollama not available)
+  model: llama3.2:3b  # Fast local model
+  fallback_to_rules: true  # If Ollama fails, use rules-only mode
+  ollama_host: http://localhost:11434
+  temperature: 0.1
+  cache_responses: true
+  cache_dir: ./data/local/llm_cache
+
+# Authentication (Simple token-based for internal use)
+auth:
+  enabled: true
+  type: simple_token  # No external auth providers
+  tokens:
+    - name: admin
+      token: local-admin-2024
+      role: admin
+    - name: annotator1
+      token: anno-team-001
+      role: annotator
+    - name: annotator2
+      token: anno-team-002
+      role: annotator
+    - name: reviewer
+      token: review-lead-003
+      role: reviewer
+
+# Storage Configuration
+storage:
+  documents: ./data/local/documents
+  candidates: ./data/local/candidates
+  gold: ./data/local/gold
+  exports: ./data/local/exports
+  logs: ./data/local/logs
+
+# API Configuration
+api:
+  host: 127.0.0.1
+  port: 8000
+  reload: true  # Auto-reload on code changes
+  log_level: info
+  cors_origins: ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+# UI Configuration
+ui:
+  host: 127.0.0.1
+  port: 3000
+  api_url: http://localhost:8000
+
+# Queue Configuration (Simple file-based queue)
+queue:
+  type: file  # File-based queue instead of Redis
+  path: ./data/local/queue
+  max_items: 1000
+
+# Auto-Accept Configuration (Conservative for local testing)
+auto_accept:
+  enabled: true
+  max_rate: 0.3  # Auto-accept max 30% of items
+  rules:
+    - id: high_confidence_local
+      min_confidence: 0.95
+      min_agreement: 0.9
+      enabled: true
+
+# Performance Settings (Optimized for local machine)
+performance:
+  max_workers: 2  # Limit concurrent processing
+  batch_size: 10  # Process 10 items at a time
+  cache_enabled: true
+  
+# Monitoring (Simplified for local use)
+monitoring:
+  enabled: false  # Disable complex monitoring
+  simple_stats: true  # Just basic statistics
+  
+# Development Features
+development:
+  seed_data: true  # Create sample data on first run
+  debug_mode: true  # Enable debug endpoints
+  skip_auth: false  # Set to true to disable authentication

@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # PostgreSQL for annotation storage
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-annotations}
+      POSTGRES_USER: ${DB_USER:-annotator}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U annotator"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for queue management
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Label Studio for annotation UI
+  label-studio:
+    image: heartexlabs/label-studio:latest
+    ports:
+      - "8080:8080"
+    environment:
+      DJANGO_DB: default
+      POSTGRE_NAME: ${DB_NAME:-annotations}
+      POSTGRE_USER: ${DB_USER:-annotator}
+      POSTGRE_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRE_PORT: ${DB_PORT:-5432}
+      POSTGRE_HOST: postgres
+      LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED: "true"
+      LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT: /data
+    volumes:
+      - label_studio_data:/label-studio/data
+      - ./data:/data
+      - ./shared/ontology:/label-studio/ontology
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: label-studio start
+
+  # Ollama for local LLM (optional)
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: "5m"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - with-local-llm
+
+volumes:
+  postgres_data:
+  redis_data:
+  label_studio_data:
+  ollama_data:
+
+networks:
+  default:
+    name: annotation_network

@@ -1,0 +1,1042 @@
+[
+  {
+    "id": 1,
+    "candidate_id": 100,
+    "doc_id": "52526b16bfe3",
+    "sent_id": "s0",
+    "text": "| Open Peer Review | Genomics and Proteomics | Research Article Vibrio parahaemolyticus becomes lethal to post-larvae shrimp via acquiring novel virulence factors Shuang Liu,1,2,3 Wei Wang,1,2 Tianchang Jia,1,2 Lusheng Xin,1,2,3 Ting-ting Xu,1,2,3 Chong Wang,1,2 Guosi Xie,1,2,3 Kun Luo,1,2 Jun Li,4 Jie Kong,1,2,3 Qingli Zhang1,2,3 AUTHOR AFFILIATIONS See affiliation list on p. 17.",
+    "priority_score": 0.95,
+    "priority_level": "high",
+    "status": "pending",
+    "entities": [
+      {
+        "id": 1,
+        "text": "Vibrio parahaemolyticus",
+        "label": "PATHOGEN",
+        "start": 64,
+        "end": 87,
+        "confidence": 0.95
+      },
+      {
+        "id": 2,
+        "text": "post-larvae",
+        "label": "LIFE_STAGE",
+        "start": 106,
+        "end": 117,
+        "confidence": 0.9
+      },
+      {
+        "id": 3,
+        "text": "shrimp",
+        "label": "SPECIES",
+        "start": 118,
+        "end": 124,
+        "confidence": 0.85
+      },
+      {
+        "id": 4,
+        "text": "novel virulence factors",
+        "label": "TRAIT",
+        "start": 139,
+        "end": 162,
+        "confidence": 0.9
+      }
+    ],
+    "relations": [],
+    "topics": [
+      {
+        "topic": "T_DISEASE",
+        "score": 0.85
+      }
+    ],
+    "source": "real_documents"
+  },
+  {
+    "id": 2,
+    "candidate_id": 101,
+    "doc_id": "52526b16bfe3",
+    "sent_id": "s1",
+    "text": "ABSTRACT Translucent post-larvae disease (TPD), caused by Vibrio parahaemolyticus (VpTPD), has become an emerging shrimp disease, affecting more than 70%-80% of coastal shrimp nurseries in China in spring 2020.",
+    "priority_score": 0.95,
+    "priority_level": "high",
+    "status": "pending",
+    "entities": [
+      {
+        "id": 1,
+        "text": "Translucent post-larvae disease",
+        "label": "DISEASE",
+        "start": 9,
+        "end": 40,
+        "confidence": 0.95
+      },
+      {
+        "id": 2,
+        "text": "Vibrio parahaemolyticus",
+        "label": "PATHOGEN",
+        "start": 58,
+        "end": 81,
+        "confidence": 0.95
+      },
+      {
+        "id": 3,
+        "text": "VpTPD",
+        "label": "DISEASE",
+        "start": 83,
+        "end": 88,
+        "confidence": 0.9
+      },
+      {
+        "id": 4,
+        "text": "shrimp",
+        "label": "SPECIES",
+        "start": 114,
+        "end": 120,
+        "confidence": 0.85
+      },
+      {
+        "id": 5,
+        "text": "70%-80%",
+        "label": "MEASUREMENT",
+        "start": 150,
+        "end": 157,
+        "confidence": 0.95
+      },
+      {
+        "id": 6,
+        "text": "coastal shrimp nurseries",
+        "label": "LOCATION",
+        "start": 161,
+        "end": 185,
+        "confidence": 0.9
+      },
+      {
+        "id": 7,
+        "text": "China",
+        "label": "LOCATION",
+        "start": 189,
+        "end": 194,
+        "confidence": 0.95
+      },
+      {
+        "id": 8,
+        "text": "spring 2020",
+        "label": "MEASUREMENT",
+        "start": 198,
+        "end": 209,
+        "confidence": 0.9
+      }
+    ],
+    "relations": [],
+    "topics": [
+      {
+        "topic": "T_DISEASE",
+        "score": 0.85
+      }
+    ],
+    "source": "real_documents"
+  },
+  {
+    "id": 3,
+    "candidate_id": 102,
+    "doc_id": "52526b16bfe3",
+    "sent_id": "s2",
+    "text": "Here, we investigated the key viru­ lence factors of VpTPD by analyzing protein fragments, related genomic information, as well as experimental challenge tests.",
+    "priority_score": 0.95,
+    "priority_level": "high",
+    "status": "pending",
+    "entities": [
+      {
+        "id": 1,
+        "text": "VpTPD",
+        "label": "DISEASE",
+        "start": 53,
+        "end": 58,
+        "confidence": 0.95
+      },
+      {
+        "id": 2,
+        "text": "protein fragments",
+        "label": "TRAIT",
+        "start": 72,
+        "end": 89,
+        "confidence": 0.85
+      },
+      {
+        "id": 3,
+        "text": "genomic information",
+        "label": "GENE",
+        "start": 99,
+        "end": 118,
+        "confidence": 0.85
+      },
+      {
+        "id": 4,
+        "text": "experimental challenge tests",
+        "label": "MANAGEMENT_PRACTICE",
+        "start": 131,
+        "end": 159,
+        "confidence": 0.8
+      }
+    ],
+    "relations": [],
+    "topics": [
+      {
+        "topic": "T_DISEASE",
+        "score": 0.85
+      }
+    ],
+    "source": "real_documents"
+  },
+  {
+    "id": 4,
+    "candidate_id": 103,
+    "doc_id": "52526b16bfe3",
+    "sent_id": "s3",
+    "text": "After investigating the toxic effects of puri­ fied protein fragments with different molecular weights (MWs) from VpTPD, we found that only the protein fragments with MW >100 kDa showed similar lethality to live VpTPD in the experimental challenge test using post-larvae shrimp.",
+    "priority_score": 0.95,
+    "priority_level": "high",
+    "status": "pending",
+    "entities": [
+      {
+        "id": 1,
+        "text": "uri­ fied protein fragments",
+        "label": "TREATMENT",
+        "start": 42,
+        "end": 69,
+        "confidence": 0.9
+      },
+      {
+        "id": 2,
+        "text": "VpTPD",
+        "label": "PATHOGEN",
+        "start": 114,
+        "end": 119,
+        "confidence": 0.95
+      },
+      {
+        "id": 3,
+        "text": "MW >100 kDa",
+        "label": "MEASUREMENT",
+        "start": 167,
+        "end": 178,
+        "confidence": 0.95
+      },
+      {
+        "id": 4,
+        "text": "lethality",
+        "label": "TRAIT",
+        "start": 194,
+        "end": 203,
+        "confidence": 0.85
+      },
+      {
+        "id": 5,
+        "text": "live VpTPD",
+        "label": "PATHOGEN",
+        "start": 207,
+        "end": 217,
+        "confidence": 0.95
+      },
+      {
+        "id": 6,
+        "text": "post-larvae shrimp",
+        "label": "LIFE_STAGE",
+        "start": 259,
+        "end": 277,
+        "confidence": 0.9
+      }
+    ],
+    "relations": [],
+    "topics": [
+      {
+        "topic": "T_DISEASE",
+        "score": 0.85
+      }
+    ],
+    "source": "real_documents"
+  },
+  {
+    "id": 5,
+    "candidate_id": 104,
+    "doc_id": "52526b16bfe3",
+    "sent_id": "s4",
+    "text": "Meanwhile, similar histopathological changes exhibiting in the hepatopancreas and midgut of the diseased individuals were observed in the post-larvae shrimp challenged with either bacterial protein fragments (MW >100 kDa) or live VpTPD.",
+    "priority_score": 0.95,
+    "priority_level": "high",
+    "status": "pending",
+    "entities": [
+      {
+        "id": 1,
+        "text": "hepatopancreas",
+        "label": "TRAIT",
+        "start": 63,
+        "end": 77,
+        "confidence": 0.9
+      },
+      {
+        "id": 2,
+        "text": "midgut",
+        "label": "TRAIT",
+        "start": 82,
+        "end": 88,
+        "confidence": 0.9
+      },
+      {
+        "id": 3,
+        "text": "diseased individuals",
+        "label": "LIFE_STAGE",
+        "start": 96,
+        "end": 116,
+        "confidence": 0.85
+      },
+      {
+        "id": 4,
+        "text": "post-larvae",
+        "label": "LIFE_STAGE",
+        "start": 138,
+        "end": 149,
+        "confidence": 0.9
+      },
+      {
+        "id": 5,
+        "text": "shrimp",
+        "label": "SPECIES",
+        "start": 150,
+        "end": 156,
+        "confidence": 0.85
+      },
+      {
+        "id": 6,
+        "text": "bacterial protein fragments",
+        "label": "PATHOGEN",
+        "start": 180,
+        "end": 207,
+        "confidence": 0.9
+      },
+      {
+        "id": 7,
+        "text": "MW >100 kDa",
+        "label": "MEASUREMENT",
+        "start": 209,
+        "end": 220,
+        "confidence": 0.95
+      },
+      {
+        "id": 8,
+        "text": "VpTPD",
+        "label": "DISEASE",
+        "start": 230,
+        "end": 235,
+        "confidence": 0.95
+      }
+    ],
+    "relations": [],
+    "topics": [
+      {
+        "topic": "T_DISEASE",
+        "score": 0.85
+      }
+    ],
+    "source": "real_documents"
+  },
+  {
+    "id": 6,
+    "candidate_id": 105,
+    "doc_id": "52526b16bfe3",
+    "sent_id": "s5",
+    "text": "Based on sodium dodecyl sulfate- polyacrylamide gel electrophoresis (SDS-PAGE) and mass spectrometry analyses, two novel proteins, Vibrio high virulent protein (VHVP)-1 and VHVP-2, were identified as the candidates of key virulence factors to cause TPD.",
+    "priority_score": 0.95,
+    "priority_level": "high",
+    "status": "pending",
+    "entities": [
+      {
+        "id": 1,
+        "text": "sodium dodecyl sulfate- polyacrylamide gel electrophoresis",
+        "label": "MANAGEMENT_PRACTICE",
+        "start": 9,
+        "end": 67,
+        "confidence": 0.9
+      },
+      {
+        "id": 2,
+        "text": "mass spectrometry",
+        "label": "MANAGEMENT_PRACTICE",
+        "start": 83,
+        "end": 100,
+        "confidence": 0.9
+      },
+      {
+        "id": 3,
+        "text": "Vibrio high virulent protein (VHVP)-1",
+        "label": "PATHOGEN",
+        "start": 131,
+        "end": 168,
+        "confidence": 0.95
+      },
+      {
+        "id": 4,
+        "text": "Vibrio high virulent protein (VHVP)-1",
+        "label": "PATHOGEN",
+        "start": 131,
+        "end": 168,
+        "confidence": 0.95
+      },
+      {
+        "id": 5,
+        "text": "TPD",
+        "label": "DISEASE",
+        "start": 249,
+        "end": 252,
+        "confidence": 0.95
+      }
+    ],
+    "relations": [],
+    "topics": [
+      {
+        "topic": "T_DISEASE",
+        "score": 0.85
+      }
+    ],
+    "source": "real_documents"
+  },
+  {
+    "id": 7,
+    "candidate_id": 106,
+    "doc_id": "52526b16bfe3",
+    "sent_id": "s6",
+    "text": "Moreover, VHVP-1 and VHVP-2 were found to be encoded by two genes (vhvp-1 and vhvp-2) tandemly located on a 187,791-bp plasmid and were predicted to depend on the same promoter following a comparative genomic analysis.",
+    "priority_score": 0.95,
+    "priority_level": "high",
+    "status": "pending",
+    "entities": [
+      {
+        "id": 1,
+        "text": "VHVP-1",
+        "label": "GENE",
+        "start": 10,
+        "end": 16,
+        "confidence": 0.95
+      },
+      {
+        "id": 2,
+        "text": "VHVP-2",
+        "label": "GENE",
+        "start": 21,
+        "end": 27,
+        "confidence": 0.95
+      },
+      {
+        "id": 3,
+        "text": "VHVP-1",
+        "label": "GENE",
+        "start": 10,
+        "end": 16,
+        "confidence": 0.95
+      },
+      {
+        "id": 4,
+        "text": "VHVP-2",
+        "label": "GENE",
+        "start": 21,
+        "end": 27,
+        "confidence": 0.95
+      },
+      {
+        "id": 5,
+        "text": "187,791-bp",
+        "label": "MEASUREMENT",
+        "start": 108,
+        "end": 118,
+        "confidence": 0.95
+      }
+    ],
+    "relations": [],
+    "topics": [
+      {
+        "topic": "T_DISEASE",
+        "score": 0.85
+      }
+    ],
+    "source": "real_documents"
+  },
+  {
+    "id": 8,
+    "candidate_id": 107,
+    "doc_id": "52526b16bfe3",
+    "sent_id": "s8",
+    "text": "Parahaemolyticus isolate carrying only the vhvp-1 gene and lacking vhvp-2 gene could not cause mortality of experimental Penaeus vannamei post-larvae.",
+    "priority_score": 0.95,
+    "priority_level": "high",
+    "status": "pending",
+    "entities": [
+      {
+        "id": 1,
+        "text": "Parahaemolyticus",
+        "label": "PATHOGEN",
+        "start": 0,
+        "end": 16,
+        "confidence": 0.95
+      },
+      {
+        "id": 2,
+        "text": "vhvp-1",
+        "label": "GENE",
+        "start": 43,
+        "end": 49,
+        "confidence": 0.95
+      },
+      {
+        "id": 3,
+        "text": "vhvp-2",
+        "label": "GENE",
+        "start": 67,
+        "end": 73,
+        "confidence": 0.95
+      },
+      {
+        "id": 4,
+        "text": "Penaeus vannamei",
+        "label": "SPECIES",
+        "start": 121,
+        "end": 137,
+        "confidence": 0.95
+      },
+      {
+        "id": 5,
+        "text": "post-larvae",
+        "label": "LIFE_STAGE",
+        "start": 138,
+        "end": 149,
+        "confidence": 0.9
+      }
+    ],
+    "relations": [],
+    "topics": [
+      {
+        "topic": "T_DISEASE",
+        "score": 0.85
+      }
+    ],
+    "source": "real_documents"
+  },
+  {
+    "id": 9,
+    "candidate_id": 108,
+    "doc_id": "52526b16bfe3",
+    "sent_id": "s9",
+    "text": "The mutant (Δvhvp-2) by deleting vhvp-2 gene could only cause 4.92% of accumula­ tive mortality of post-larvae that is similar to the non-VpTPD Vibrio strain.",
+    "priority_score": 0.95,
+    "priority_level": "high",
+    "status": "pending",
+    "entities": [
+      {
+        "id": 1,
+        "text": "Δvhvp-2",
+        "label": "GENE",
+        "start": 12,
+        "end": 19,
+        "confidence": 0.95
+      },
+      {
+        "id": 2,
+        "text": "vhvp-2",
+        "label": "GENE",
+        "start": 13,
+        "end": 19,
+        "confidence": 0.95
+      },
+      {
+        "id": 3,
+        "text": "4.92%",
+        "label": "MEASUREMENT",
+        "start": 62,
+        "end": 67,
+        "confidence": 0.95
+      },
+      {
+        "id": 4,
+        "text": "post-larvae",
+        "label": "LIFE_STAGE",
+        "start": 99,
+        "end": 110,
+        "confidence": 0.9
+      },
+      {
+        "id": 5,
+        "text": "non-VpTPD",
+        "label": "PATHOGEN",
+        "start": 134,
+        "end": 143,
+        "confidence": 0.95
+      },
+      {
+        "id": 6,
+        "text": "Vibrio strain",
+        "label": "PATHOGEN",
+        "start": 144,
+        "end": 157,
+        "confidence": 0.95
+      }
+    ],
+    "relations": [],
+    "topics": [
+      {
+        "topic": "T_DISEASE",
+        "score": 0.85
+      }
+    ],
+    "source": "real_documents"
+  },
+  {
+    "id": 10,
+    "candidate_id": 109,
+    "doc_id": "52526b16bfe3",
+    "sent_id": "s10",
+    "text": "Additionally, the complemented strains, Δvhvp-2/pBT3-vhvp-2 and Δvhvp-2/pwtCas9-vhvp-2, showed similar virulence to the wild-type VpTPD.",
+    "priority_score": 0.95,
+    "priority_level": "high",
+    "status": "pending",
+    "entities": [
+      {
+        "id": 1,
+        "text": "Δvhvp-2/pBT3-vhvp-2",
+        "label": "GENE",
+        "start": 40,
+        "end": 59,
+        "confidence": 0.95
+      },
+      {
+        "id": 2,
+        "text": "Δvhvp-2/pwtCas9-vhvp-2",
+        "label": "GENE",
+        "start": 64,
+        "end": 86,
+        "confidence": 0.95
+      },
+      {
+        "id": 3,
+        "text": "virulence",
+        "label": "TRAIT",
+        "start": 103,
+        "end": 112,
+        "confidence": 0.9
+      },
+      {
+        "id": 4,
+        "text": "wild-type",
+        "label": "SPECIES",
+        "start": 120,
+        "end": 129,
+        "confidence": 0.85
+      },
+      {
+        "id": 5,
+        "text": "VpTPD",
+        "label": "PATHOGEN",
+        "start": 130,
+        "end": 135,
+        "confidence": 0.95
+      }
+    ],
+    "relations": [],
+    "topics": [
+      {
+        "topic": "T_DISEASE",
+        "score": 0.85
+      }
+    ],
+    "source": "real_documents"
+  },
+  {
+    "id": 11,
+    "candidate_id": 110,
+    "doc_id": "52526b16bfe3",
+    "sent_id": "s12",
+    "text": "Parahaemolyti­ cus becomes lethal to post-larval shrimp by acquiring the VHVP-2 virulence factor.",
+    "priority_score": 0.95,
+    "priority_level": "high",
+    "status": "pending",
+    "entities": [
+      {
+        "id": 1,
+        "text": "Parahaemolyti­ c",
+        "label": "PATHOGEN",
+        "start": 0,
+        "end": 16,
+        "confidence": 0.95
+      },
+      {
+        "id": 2,
+        "text": "post-larval",
+        "label": "LIFE_STAGE",
+        "start": 37,
+        "end": 48,
+        "confidence": 0.9
+      },
+      {
+        "id": 3,
+        "text": "shrimp",
+        "label": "SPECIES",
+        "start": 49,
+        "end": 55,
+        "confidence": 0.85
+      },
+      {
+        "id": 4,
+        "text": "VHVP-2",
+        "label": "GENE",
+        "start": 73,
+        "end": 79,
+        "confidence": 0.9
+      },
+      {
+        "id": 5,
+        "text": "virulence factor",
+        "label": "TRAIT",
+        "start": 80,
+        "end": 96,
+        "confidence": 0.9
+      }
+    ],
+    "relations": [],
+    "topics": [
+      {
+        "topic": "T_DISEASE",
+        "score": 0.85
+      }
+    ],
+    "source": "real_documents"
+  },
+  {
+    "id": 12,
+    "candidate_id": 111,
+    "doc_id": "52526b16bfe3",
+    "sent_id": "s13",
+    "text": "This study sheds light on further investigations of the pathogenic mechanism of VpTPD and the development of strategies for early diagnosis of TPD in shrimp hatcheries.",
+    "priority_score": 0.95,
+    "priority_level": "high",
+    "status": "pending",
+    "entities": [
+      {
+        "id": 1,
+        "text": "VpTPD",
+        "label": "PATHOGEN",
+        "start": 80,
+        "end": 85,
+        "confidence": 0.95
+      },
+      {
+        "id": 2,
+        "text": "TPD",
+        "label": "DISEASE",
+        "start": 82,
+        "end": 85,
+        "confidence": 0.95
+      },
+      {
+        "id": 3,
+        "text": "shrimp",
+        "label": "SPECIES",
+        "start": 150,
+        "end": 156,
+        "confidence": 0.85
+      },
+      {
+        "id": 4,
+        "text": "hatcheries",
+        "label": "LOCATION",
+        "start": 157,
+        "end": 167,
+        "confidence": 0.9
+      }
+    ],
+    "relations": [],
+    "topics": [
+      {
+        "topic": "T_DISEASE",
+        "score": 0.85
+      }
+    ],
+    "source": "real_documents"
+  },
+  {
+    "id": 13,
+    "candidate_id": 112,
+    "doc_id": "52526b16bfe3",
+    "sent_id": "s14",
+    "text": "IMPORTANCE As a severe emerging shrimp disease, TPD has heavily impacted the shrimp aquaculture industry and resulted in serious economic losses in China since spring 2020.",
+    "priority_score": 0.95,
+    "priority_level": "high",
+    "status": "pending",
+    "entities": [
+      {
+        "id": 1,
+        "text": "TPD",
+        "label": "DISEASE",
+        "start": 48,
+        "end": 51,
+        "confidence": 0.95
+      },
+      {
+        "id": 2,
+        "text": "shrimp",
+        "label": "SPECIES",
+        "start": 32,
+        "end": 38,
+        "confidence": 0.85
+      },
+      {
+        "id": 3,
+        "text": "China",
+        "label": "LOCATION",
+        "start": 148,
+        "end": 153,
+        "confidence": 0.95
+      },
+      {
+        "id": 4,
+        "text": "spring 2020",
+        "label": "MEASUREMENT",
+        "start": 160,
+        "end": 171,
+        "confidence": 0.9
+      }
+    ],
+    "relations": [],
+    "topics": [
+      {
+        "topic": "T_DISEASE",
+        "score": 0.85
+      }
+    ],
+    "source": "real_documents"
+  },
+  {
+    "id": 14,
+    "candidate_id": 113,
+    "doc_id": "52526b16bfe3",
+    "sent_id": "s15",
+    "text": "This study aimed to identify the key virulent factors and related genes of the VpTPD, for a better understanding of its pathogenicity of the novel highly lethal infectious pathogen, as well as its molecular epidemiological characteristics in China.",
+    "priority_score": 0.95,
+    "priority_level": "high",
+    "status": "pending",
+    "entities": [
+      {
+        "id": 1,
+        "text": "VpTPD",
+        "label": "DISEASE",
+        "start": 79,
+        "end": 84,
+        "confidence": 0.95
+      },
+      {
+        "id": 2,
+        "text": "pathogenicity",
+        "label": "TRAIT",
+        "start": 120,
+        "end": 133,
+        "confidence": 0.9
+      },
+      {
+        "id": 3,
+        "text": "China",
+        "label": "LOCATION",
+        "start": 242,
+        "end": 247,
+        "confidence": 0.95
+      }
+    ],
+    "relations": [],
+    "topics": [
+      {
+        "topic": "T_DISEASE",
+        "score": 0.85
+      }
+    ],
+    "source": "real_documents"
+  },
+  {
+    "id": 15,
+    "candidate_id": 114,
+    "doc_id": "52526b16bfe3",
+    "sent_id": "s16",
+    "text": "The present study revealed that a novel protein, Vibrio high virulent protein-2 (MW >100 kDa), is responsible to the lethal virulence of V.",
+    "priority_score": 0.95,
+    "priority_level": "high",
+    "status": "pending",
+    "entities": [
+      {
+        "id": 1,
+        "text": "Vibrio high virulent protein-2",
+        "label": "PATHOGEN",
+        "start": 49,
+        "end": 79,
+        "confidence": 0.95
+      },
+      {
+        "id": 2,
+        "text": "MW >100 kDa",
+        "label": "MEASUREMENT",
+        "start": 81,
+        "end": 92,
+        "confidence": 0.95
+      },
+      {
+        "id": 3,
+        "text": "lethal virulence",
+        "label": "TRAIT",
+        "start": 117,
+        "end": 133,
+        "confidence": 0.9
+      },
+      {
+        "id": 4,
+        "text": "v",
+        "label": "SPECIES",
+        "start": 20,
+        "end": 21,
+        "confidence": 0.85
+      }
+    ],
+    "relations": [],
+    "topics": [
+      {
+        "topic": "T_DISEASE",
+        "score": 0.85
+      }
+    ],
+    "source": "real_documents"
+  },
+  {
+    "id": 16,
+    "candidate_id": 115,
+    "doc_id": "52526b16bfe3",
+    "sent_id": "s17",
+    "text": "Parahaemolyticus to shrimp post-larvae.",
+    "priority_score": 0.95,
+    "priority_level": "high",
+    "status": "pending",
+    "entities": [
+      {
+        "id": 1,
+        "text": "Parahaemolyticus",
+        "label": "PATHOGEN",
+        "start": 0,
+        "end": 16,
+        "confidence": 0.95
+      },
+      {
+        "id": 2,
+        "text": "shrimp",
+        "label": "SPECIES",
+        "start": 20,
+        "end": 26,
+        "confidence": 0.85
+      },
+      {
+        "id": 3,
+        "text": "post-larvae",
+        "label": "LIFE_STAGE",
+        "start": 27,
+        "end": 38,
+        "confidence": 0.9
+      }
+    ],
+    "relations": [],
+    "topics": [
+      {
+        "topic": "T_DISEASE",
+        "score": 0.85
+      }
+    ],
+    "source": "real_documents"
+  },
+  {
+    "id": 17,
+    "candidate_id": 116,
+    "doc_id": "52526b16bfe3",
+    "sent_id": "s18",
+    "text": "The results are essential for effectively diagnosing and monitoring novel pathogenic bacteria, like VpTPD, in aquaculture shrimps and would be beneficial to the fisheries department in early warning of VpTPD emergence and developing prevention strategies to reduce economic losses due to severe outbreaks of TPD.",
+    "priority_score": 0.95,
+    "priority_level": "high",
+    "status": "pending",
+    "entities": [
+      {
+        "id": 1,
+        "text": "VpTPD",
+        "label": "PATHOGEN",
+        "start": 100,
+        "end": 105,
+        "confidence": 0.95
+      },
+      {
+        "id": 2,
+        "text": "aquaculture shrimps",
+        "label": "SPECIES",
+        "start": 110,
+        "end": 129,
+        "confidence": 0.85
+      },
+      {
+        "id": 3,
+        "text": "VpTPD",
+        "label": "PATHOGEN",
+        "start": 100,
+        "end": 105,
+        "confidence": 0.95
+      },
+      {
+        "id": 4,
+        "text": "TPD",
+        "label": "DISEASE",
+        "start": 102,
+        "end": 105,
+        "confidence": 0.95
+      }
+    ],
+    "relations": [],
+    "topics": [
+      {
+        "topic": "T_DISEASE",
+        "score": 0.85
+      }
+    ],
+    "source": "real_documents"
+  },
+  {
+    "id": 18,
+    "candidate_id": 117,
+    "doc_id": "52526b16bfe3",
+    "sent_id": "s19",
+    "text": "Elucidation of the key virulence genes and genomics of VpTPD could also provide valuable information on the evolution and ecology of this emerging pathogen in aquaculture environments.",
+    "priority_score": 0.8645857847759992,
+    "priority_level": "medium",
+    "status": "pending",
+    "entities": [
+      {
+        "id": 1,
+        "text": "VpTPD",
+        "label": "PATHOGEN",
+        "start": 55,
+        "end": 60,
+        "confidence": 0.95
+      },
+      {
+        "id": 2,
+        "text": "aquaculture environments",
+        "label": "ENVIRONMENTAL_PARAM",
+        "start": 159,
+        "end": 183,
+        "confidence": 0.9
+      }
+    ],
+    "relations": [],
+    "topics": [
+      {
+        "topic": "T_DISEASE",
+        "score": 0.85
+      }
+    ],
+    "source": "real_documents"
+  }
+]

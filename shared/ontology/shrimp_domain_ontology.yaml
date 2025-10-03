@@ -1,0 +1,246 @@
+# Shrimp Aquaculture Domain Ontology
+# Version: 1.0
+# Last Updated: 2025-01-26
+
+entities:
+  SPECIES:
+    description: "Organism common/scientific names"
+    examples:
+      - "Penaeus vannamei"
+      - "Litopenaeus vannamei"
+      - "Pacific white shrimp"
+      - "Penaeus monodon"
+      - "Black tiger shrimp"
+    canonical_forms:
+      "white shrimp": "Penaeus vannamei"
+      "P. vannamei": "Penaeus vannamei"
+      "L. vannamei": "Litopenaeus vannamei"
+      "tiger shrimp": "Penaeus monodon"
+      "P. monodon": "Penaeus monodon"
+  
+  PATHOGEN:
+    description: "Disease-causing agents"
+    examples:
+      - "Vibrio parahaemolyticus"
+      - "Vibrio harveyi"
+      - "EHP (Enterocytozoon hepatopenaei)"
+      - "WSSV"
+      - "YHV"
+    canonical_forms:
+      "V. parahaemolyticus": "Vibrio parahaemolyticus"
+      "VpTPD": "Vibrio parahaemolyticus (TPD strain)"
+      "white spot virus": "WSSV"
+      "yellow head virus": "YHV"
+  
+  DISEASE:
+    description: "Clinical conditions and syndromes"
+    examples:
+      - "AHPND (Acute Hepatopancreatic Necrosis Disease)"
+      - "TPD (Translucent Post-larvae Disease)"
+      - "WSD (White Spot Disease)"
+      - "EMS (Early Mortality Syndrome)"
+      - "White feces syndrome"
+    canonical_forms:
+      "EMS": "AHPND"
+      "early mortality syndrome": "AHPND"
+      "white spot": "WSD"
+  
+  TREATMENT:
+    description: "Therapeutic interventions"
+    examples:
+      - "oxytetracycline"
+      - "florfenicol"
+      - "probiotics"
+      - "bacteriophage therapy"
+      - "organic acids"
+    categories:
+      antibiotics: ["oxytetracycline", "florfenicol", "enrofloxacin"]
+      probiotics: ["Bacillus subtilis", "Lactobacillus", "Pseudomonas"]
+      disinfectants: ["chlorine", "iodine", "formalin"]
+  
+  MANAGEMENT_PRACTICE:
+    description: "Husbandry and management procedures"
+    examples:
+      - "biosecurity"
+      - "water exchange"
+      - "pond preparation"
+      - "stocking density"
+      - "biofloc system"
+    categories:
+      biosecurity: ["quarantine", "disinfection", "exclusion"]
+      water_management: ["water exchange", "aeration", "pH adjustment"]
+      feed_management: ["feeding rate", "feed conversion ratio", "feeding frequency"]
+
+  GENE:
+    description: "Genetic markers and genes"
+    examples:
+      - "PvIGF"
+      - "hemocyanin"
+      - "prophenoloxidase"
+      - "crustin"
+      - "penaeidin"
+    
+  TRAIT:
+    description: "Measurable characteristics"
+    examples:
+      - "survival rate"
+      - "growth rate"
+      - "disease resistance"
+      - "feed conversion ratio"
+      - "specific pathogen resistance"
+    
+  LIFE_STAGE:
+    description: "Developmental stages"
+    stages:
+      - "nauplius"
+      - "zoea"
+      - "mysis"
+      - "post-larvae (PL)"
+      - "juvenile"
+      - "sub-adult"
+      - "broodstock"
+    notation:
+      "PL": "post-larvae"
+      "PL10": "post-larvae day 10"
+      "PL15": "post-larvae day 15"
+      
+  MEASUREMENT:
+    description: "Numeric measurements with units"
+    patterns:
+      - pattern: '\d+\.?\d*\s*(ppt|g/L|mg/L)'
+        type: "salinity"
+      - pattern: '\d+\.?\d*\s*°?C'
+        type: "temperature"
+      - pattern: '\d+\.?\d*\s*(g|kg|mg)'
+        type: "weight"
+      - pattern: '\d+\.?\d*\s*(cm|mm)'
+        type: "length"
+      - pattern: '\d+\.?\d*\s*%'
+        type: "percentage"
+        
+  ENVIRONMENTAL_PARAM:
+    description: "Environmental factors"
+    examples:
+      - "temperature"
+      - "salinity"
+      - "dissolved oxygen (DO)"
+      - "pH"
+      - "ammonia"
+      - "nitrite"
+      - "alkalinity"
+      
+  LOCATION:
+    description: "Geographic or facility locations"
+    examples:
+      - "pond"
+      - "hatchery"
+      - "nursery"
+      - "laboratory"
+      - specific_locations: ["Thailand", "Vietnam", "Ecuador", "India"]
+
+relations:
+  infected_by:
+    domain: SPECIES
+    range: PATHOGEN
+    description: "Host infected by pathogen"
+    examples:
+      - "Penaeus vannamei infected_by Vibrio parahaemolyticus"
+      
+  causes:
+    domain: PATHOGEN
+    range: DISEASE
+    description: "Pathogen causes disease"
+    examples:
+      - "Vibrio parahaemolyticus causes AHPND"
+      - "WSSV causes WSD"
+      
+  treated_with:
+    domain: DISEASE
+    range: TREATMENT
+    description: "Disease treated with intervention"
+    examples:
+      - "AHPND treated_with florfenicol"
+      
+  resistant_to:
+    domain: [SPECIES, GENE]
+    range: [PATHOGEN, TREATMENT]
+    description: "Resistance relationship"
+    examples:
+      - "SPR line resistant_to WSSV"
+      
+  associated_with:
+    domain: [TRAIT, DISEASE]
+    range: [ENVIRONMENTAL_PARAM, MANAGEMENT_PRACTICE]
+    description: "General association"
+    bidirectional: true
+    
+  measurement_of:
+    domain: MEASUREMENT
+    range: [TRAIT, ENVIRONMENTAL_PARAM]
+    description: "Measurement of parameter"
+    
+  located_in:
+    domain: "*"
+    range: LOCATION
+    description: "Spatial relationship"
+    
+  affects_trait:
+    domain: [GENE, ENVIRONMENTAL_PARAM]
+    range: TRAIT
+    description: "Factor affecting trait"
+    
+  has_variant:
+    domain: GENE
+    range: GENE
+    description: "Genetic variant relationship"
+
+topics:
+  T_DISEASE:
+    name: "Disease & Pathology"
+    keywords: ["disease", "pathogen", "mortality", "syndrome", "infection", "outbreak"]
+    scope: "Disease mechanisms, pathology, epidemiology"
+    
+  T_TREATMENT:
+    name: "Treatment & Therapeutics"
+    keywords: ["treatment", "antibiotic", "probiotic", "therapy", "medication"]
+    scope: "Therapeutic interventions and treatments"
+    
+  T_GENETICS:
+    name: "Genetics & Breeding"
+    keywords: ["gene", "breeding", "selection", "heritability", "QTL", "SNP"]
+    scope: "Genetic improvement and selective breeding"
+    
+  T_MANAGEMENT:
+    name: "Farm Management"
+    keywords: ["management", "husbandry", "stocking", "harvest", "production"]
+    scope: "Aquaculture management practices"
+    
+  T_ENVIRONMENT:
+    name: "Environmental Parameters"
+    keywords: ["water quality", "temperature", "salinity", "oxygen", "pH"]
+    scope: "Environmental conditions and monitoring"
+    
+  T_REPRODUCTION:
+    name: "Reproduction & Hatchery"
+    keywords: ["spawning", "larvae", "maturation", "broodstock", "hatchery"]
+    scope: "Reproductive biology and hatchery operations"
+    
+  T_NUTRITION:
+    name: "Nutrition & Feed"
+    keywords: ["feed", "nutrition", "protein", "lipid", "vitamin", "FCR"]
+    scope: "Nutritional requirements and feed management"
+    
+  T_BIOSECURITY:
+    name: "Biosecurity & Prevention"
+    keywords: ["biosecurity", "prevention", "quarantine", "disinfection", "SPF"]
+    scope: "Disease prevention and biosecurity measures"
+    
+  T_ECONOMICS:
+    name: "Economics & Markets"
+    keywords: ["cost", "price", "market", "profit", "economics", "trade"]
+    scope: "Economic aspects of shrimp farming"
+    
+  T_DIAGNOSTICS:
+    name: "Diagnostics & Detection"
+    keywords: ["PCR", "diagnosis", "detection", "screening", "test", "assay"]
+    scope: "Disease diagnostics and detection methods"

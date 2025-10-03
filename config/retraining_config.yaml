@@ -1,0 +1,59 @@
+# Model Retraining Trigger Configuration
+# Controls when automated model retraining is triggered
+
+# Data Volume Thresholds
+data_volume:
+  min_new_annotations: 100        # Minimum new annotations since last training
+  min_annotation_ratio: 0.10      # Minimum 10% new data ratio to trigger retraining
+
+# Quality Degradation Thresholds  
+quality:
+  min_quality_drop: 0.05          # 5% drop in F1 score triggers retraining
+  min_iaa_drop: 0.10              # 10% drop in Inter-Annotator Agreement triggers retraining
+
+# Time-Based Scheduling
+schedule:
+  max_days_since_training: 30     # Force retraining after 30 days
+  min_days_between_training: 7    # Minimum 7 days between training runs
+
+# Performance Thresholds
+performance:
+  min_performance_drop: 0.05      # 5% drop in auto-accept accuracy triggers retraining
+
+# Domain Novelty Detection
+domain:
+  novelty_threshold: 0.30         # 30% new entity/relation types triggers retraining
+
+# System Settings
+system:
+  enable_automatic_training: true  # Enable automatic retraining
+  require_manual_approval: false  # Require manual approval for retraining
+  parallel_training_limit: 2      # Maximum parallel training jobs
+
+# Model-Specific Settings
+models:
+  scibert_ner:
+    priority_weight: 1.0
+    base_training_duration: 120   # minutes
+    
+  relation_extraction:
+    priority_weight: 1.2
+    base_training_duration: 90    # minutes
+    
+  topic_classification:
+    priority_weight: 0.8
+    base_training_duration: 60    # minutes
+    
+  auto_accept_classifier:
+    priority_weight: 1.5          # Highest priority for performance
+    base_training_duration: 30    # minutes
+
+# Event Integration
+events:
+  redis_url: "redis://localhost:6379"
+  event_stream_prefix: "annotation_pipeline"
+  
+# Monitoring
+monitoring:
+  check_interval_minutes: 5       # How often to check trigger conditions
+  log_level: "INFO"              # Logging level for retraining system

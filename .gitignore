@@ -1,0 +1,93 @@
+# Environment variables
+.env
+.env.local
+.env.production
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/local/annotations.db
+services/api/annotations.db
+
+# Logs
+logs/
+*.log
+
+# Cache
+data/
+data/local/llm_cache/
+data/candidates/.cache/
+.cache/
+
+# Sensitive data
+*.pem
+*.key
+*.crt
+*.p12
+secrets/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Build outputs
+build/
+dist/
+ui/build/
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Backups
+backups/
+*.backup
+*.dump
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS files
+Thumbs.db
+.DS_Store
