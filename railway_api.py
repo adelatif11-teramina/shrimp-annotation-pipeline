@@ -5,6 +5,7 @@ Minimal Railway-compatible API for Shrimp Annotation Pipeline
 
 import os
 import logging
+import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from pathlib import Path
@@ -19,6 +20,11 @@ import uvicorn
 # Setup basic logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# In-memory storage for Railway demo (persists during app lifetime)
+documents_store = []
+triage_queue_store = []
+annotations_store = []
 
 # Create FastAPI app
 app = FastAPI(
@@ -115,22 +121,39 @@ async def readiness_check():
 
 @app.post("/api/documents/ingest")
 async def ingest_document(doc_request: DocumentRequest):
-    """Ingest a document for annotation (minimal implementation)"""
+    """Ingest a document for annotation (store in memory)"""
     logger.info(f"Document ingestion requested: {doc_request.doc_id}")
     
     # Calculate sentence count (simple split by period)
     sentences = [s.strip() for s in doc_request.text.split('.') if s.strip()]
     
-    # Create response with more realistic data
-    return {
+    # Create document object
+    document = {
+        "id": len(documents_store) + 1,
         "doc_id": doc_request.doc_id,
         "title": doc_request.title or f"Document {doc_request.doc_id}",
         "source": doc_request.source,
+        "raw_text": doc_request.text,
+        "sentence_count": len(sentences),
+        "metadata": doc_request.metadata,
+        "created_at": datetime.now().isoformat()
+    }
+    
+    # Store document in memory
+    documents_store.append(document)
+    
+    logger.info(f"Document stored successfully: {doc_request.doc_id} (Total documents: {len(documents_store)})")
+    
+    # Create response
+    return {
+        "doc_id": doc_request.doc_id,
+        "title": document["title"],
+        "source": doc_request.source,
         "sentence_count": len(sentences),
         "sentences": len(sentences),
-        "message": "Document ingested successfully",
+        "message": "Document ingested and stored successfully",
         "status": "processed",
-        "created_at": datetime.now().isoformat()
+        "created_at": document["created_at"]
     }
 
 @app.post("/api/candidates/generate")
@@ -162,50 +185,61 @@ async def generate_candidates(doc_id: str = "demo", sent_id: str = "s1", text: s
 
 @app.get("/api/documents")
 async def get_documents(limit: int = 50, offset: int = 0, search: Optional[str] = None):
-    """Get documents list"""
-    logger.info(f"Documents list requested: limit={limit}, offset={offset}, search={search}")
+    """Get documents list from memory storage"""
+    logger.info(f"Documents list requested: limit={limit}, offset={offset}, search={search} (Storage: {len(documents_store)} docs)")
     
-    # Demo documents for Railway deployment
-    demo_documents = [
-        {
-            "id": 1,
-            "doc_id": "demo_001",
-            "title": "Shrimp Disease Management Guidelines",
-            "source": "manual",
-            "created_at": "2024-01-15T10:00:00Z",
-            "sentence_count": 45
-        },
-        {
-            "id": 2,
-            "doc_id": "demo_002", 
-            "title": "WSSV Prevention Strategies",
-            "source": "upload",
-            "created_at": "2024-01-14T15:30:00Z",
-            "sentence_count": 32
-        },
-        {
-            "id": 3,
-            "doc_id": "demo_003",
-            "title": "Aquaculture Best Practices",
-            "source": "manual",
-            "created_at": "2024-01-13T09:15:00Z",
-            "sentence_count": 68
-        }
-    ]
+    # Start with all stored documents
+    all_documents = documents_store.copy()
+    
+    # If no documents in storage, return demo documents
+    if not all_documents:
+        logger.info("No documents in storage, returning demo documents")
+        demo_documents = [
+            {
+                "id": 1,
+                "doc_id": "demo_001",
+                "title": "Shrimp Disease Management Guidelines",
+                "source": "manual",
+                "created_at": "2024-01-15T10:00:00Z",
+                "sentence_count": 45
+            },
+            {
+                "id": 2,
+                "doc_id": "demo_002", 
+                "title": "WSSV Prevention Strategies",
+                "source": "upload",
+                "created_at": "2024-01-14T15:30:00Z",
+                "sentence_count": 32
+            },
+            {
+                "id": 3,
+                "doc_id": "demo_003",
+                "title": "Aquaculture Best Practices",
+                "source": "manual",
+                "created_at": "2024-01-13T09:15:00Z",
+                "sentence_count": 68
+            }
+        ]
+        all_documents = demo_documents
     
     # Apply search filter if provided
     if search:
-        demo_documents = [
-            doc for doc in demo_documents 
+        all_documents = [
+            doc for doc in all_documents 
             if search.lower() in doc["title"].lower() or search.lower() in doc["doc_id"].lower()
         ]
     
+    # Sort by created_at (newest first)
+    all_documents.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    
     # Apply pagination
-    paginated_docs = demo_documents[offset:offset + limit]
+    paginated_docs = all_documents[offset:offset + limit]
+    
+    logger.info(f"Returning {len(paginated_docs)} documents (total: {len(all_documents)})")
     
     return {
         "documents": paginated_docs,
-        "total": len(demo_documents),
+        "total": len(all_documents),
         "limit": limit,
         "offset": offset
     }
