@@ -19,30 +19,72 @@ import uvicorn
 import time
 
 # Setup logging before other imports
-from utils.logging_config import setup_logging, get_logger, LogOperation
-from config.settings import get_settings
+try:
+    from utils.logging_config import setup_logging, get_logger, LogOperation
+    from config.settings import get_settings
 
-# Initialize logging
-settings = get_settings()
-setup_logging(
-    level=settings.log_level,
-    log_file=f"logs/api_{datetime.now().strftime('%Y%m%d')}.log",
-    json_format=settings.is_production,
-    enable_sensitive_filter=True
-)
+    # Initialize logging
+    settings = get_settings()
+    setup_logging(
+        level=settings.log_level,
+        log_file=f"logs/api_{datetime.now().strftime('%Y%m%d')}.log",
+        json_format=settings.is_production,
+        enable_sensitive_filter=True
+    )
+    logger = get_logger(__name__)
+except ImportError as e:
+    # Fallback for Railway deployment
+    import os
+    from pydantic import BaseSettings
+    
+    class SimpleSettings(BaseSettings):
+        environment: str = os.getenv("ENVIRONMENT", "production")
+        log_level: str = os.getenv("LOG_LEVEL", "INFO")
+        api_host: str = os.getenv("API_HOST", "0.0.0.0")
+        api_port: int = int(os.getenv("PORT", 8000))
+        jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "temp-key-for-railway")
+        cors_origins: List[str] = ["*"]
+        rate_limit_enabled: bool = False
+        
+        @property
+        def is_production(self):
+            return self.environment == "production"
+    
+    settings = SimpleSettings()
+    logging.basicConfig(level=getattr(logging, settings.log_level.upper()))
+    logger = logging.getLogger(__name__)
 
 # Import our services
 import sys
 pipeline_root = Path(__file__).parent.parent.parent
 sys.path.append(str(pipeline_root))
 
-from services.candidates.llm_candidate_generator import LLMCandidateGenerator
-from services.ingestion.document_ingestion import DocumentIngestionService, Document
-from services.triage.triage_prioritization import TriagePrioritizationEngine, TriageItem
-from services.rules.rule_based_annotator import ShimpAquacultureRuleEngine
-# from services.api.retraining_endpoints import router as retraining_router  # Temporarily disabled - requires SQLAlchemy
+# Optional imports for Railway deployment
+try:
+    from services.candidates.llm_candidate_generator import LLMCandidateGenerator
+except ImportError:
+    LLMCandidateGenerator = None
+    logger.warning("LLM Candidate Generator not available")
 
-logger = get_logger(__name__)
+try:
+    from services.ingestion.document_ingestion import DocumentIngestionService, Document
+except ImportError:
+    DocumentIngestionService = None
+    Document = None
+    logger.warning("Document Ingestion Service not available")
+
+try:
+    from services.triage.triage_prioritization import TriagePrioritizationEngine, TriageItem
+except ImportError:
+    TriagePrioritizationEngine = None
+    TriageItem = None
+    logger.warning("Triage Prioritization Engine not available")
+
+try:
+    from services.rules.rule_based_annotator import ShimpAquacultureRuleEngine
+except ImportError:
+    ShimpAquacultureRuleEngine = None
+    logger.warning("Rule-based Annotator not available")
 
 # Pydantic models for API
 class DocumentRequest(BaseModel):

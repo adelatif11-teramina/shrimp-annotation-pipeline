@@ -1,18 +1,11 @@
 # Railway Configuration for Shrimp Annotation Pipeline
 
 [build]
-builder = "NIXPACKS"
-buildCommand = "pip install -r requirements.txt && cd ui && npm install && npm run build"
+builder = "DOCKERFILE"
 
 [deploy]
-startCommand = "python scripts/start_server.py"
+startCommand = "/app/railway_start.sh"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 healthcheckPath = "/health"
-healthcheckTimeout = 30
-
-[environments.production]
-PORT = "${{PORT}}"
-ENVIRONMENT = "production"
-API_HOST = "0.0.0.0"
-API_PORT = "${{PORT}}"
+healthcheckTimeout = 60
