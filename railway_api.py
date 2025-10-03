@@ -121,7 +121,7 @@ async def readiness_check():
 
 @app.post("/api/documents/ingest")
 async def ingest_document(doc_request: DocumentRequest):
-    """Ingest a document for annotation (store in memory)"""
+    """Ingest a document for annotation (store in memory and create triage items)"""
     logger.info(f"Document ingestion requested: {doc_request.doc_id}")
     
     # Calculate sentence count (simple split by period)
@@ -142,7 +142,42 @@ async def ingest_document(doc_request: DocumentRequest):
     # Store document in memory
     documents_store.append(document)
     
+    # Create triage queue items for each sentence
+    triage_items_created = 0
+    for i, sentence in enumerate(sentences):
+        if sentence.strip():  # Only process non-empty sentences
+            # Calculate priority score based on content
+            priority_score = 0.5  # Default priority
+            if any(keyword in sentence.lower() for keyword in ['disease', 'virus', 'pathogen', 'mortality', 'infection']):
+                priority_score = 0.9
+            elif any(keyword in sentence.lower() for keyword in ['treatment', 'prevention', 'antibiotic', 'vaccine']):
+                priority_score = 0.8
+            elif any(keyword in sentence.lower() for keyword in ['shrimp', 'aquaculture', 'farming', 'pond']):
+                priority_score = 0.7
+            
+            triage_item = {
+                "id": len(triage_queue_store) + 1,
+                "item_id": len(triage_queue_store) + 1,
+                "doc_id": doc_request.doc_id,
+                "sent_id": f"s{i+1}",
+                "sentence_id": i + 1,
+                "text": sentence,
+                "priority_score": priority_score,
+                "priority_level": "high" if priority_score > 0.8 else "medium" if priority_score > 0.6 else "low",
+                "status": "pending",
+                "created_at": datetime.now().isoformat(),
+                "candidates": {
+                    "entities": [],
+                    "relations": [],
+                    "topics": []
+                }
+            }
+            
+            triage_queue_store.append(triage_item)
+            triage_items_created += 1
+    
     logger.info(f"Document stored successfully: {doc_request.doc_id} (Total documents: {len(documents_store)})")
+    logger.info(f"Created {triage_items_created} triage queue items (Total queue items: {len(triage_queue_store)})")
     
     # Create response
     return {
@@ -151,7 +186,8 @@ async def ingest_document(doc_request: DocumentRequest):
         "source": doc_request.source,
         "sentence_count": len(sentences),
         "sentences": len(sentences),
-        "message": "Document ingested and stored successfully",
+        "triage_items_created": triage_items_created,
+        "message": f"Document ingested with {triage_items_created} sentences added to triage queue",
         "status": "processed",
         "created_at": document["created_at"]
     }
@@ -256,34 +292,74 @@ async def get_statistics():
     }
 
 @app.get("/api/triage/queue")
-async def get_triage_queue(limit: int = 50, offset: int = 0):
-    """Get triage queue items"""
-    demo_items = [
-        {
-            "id": 1,
-            "item_id": 1,
-            "doc_id": "demo_001",
-            "sent_id": "s1",
-            "text": "White Spot Syndrome Virus (WSSV) causes significant mortality in shrimp farming.",
-            "priority_score": 0.95,
-            "status": "pending",
-            "created_at": datetime.now().isoformat()
-        },
-        {
-            "id": 2,
-            "item_id": 2,
-            "doc_id": "demo_002",
-            "sent_id": "s1",
-            "text": "Probiotics can improve water quality in shrimp ponds.",
-            "priority_score": 0.82,
-            "status": "pending",
-            "created_at": datetime.now().isoformat()
-        }
-    ]
+async def get_triage_queue(limit: int = 50, offset: int = 0, status: Optional[str] = None):
+    """Get triage queue items from storage"""
+    logger.info(f"Triage queue requested: limit={limit}, offset={offset}, status={status} (Storage: {len(triage_queue_store)} items)")
+    
+    # Start with all stored triage items
+    all_items = triage_queue_store.copy()
+    
+    # If no items in storage, return demo items
+    if not all_items:
+        logger.info("No triage items in storage, returning demo items")
+        demo_items = [
+            {
+                "id": 1,
+                "item_id": 1,
+                "doc_id": "demo_001",
+                "sent_id": "s1",
+                "text": "White Spot Syndrome Virus (WSSV) causes significant mortality in shrimp farming.",
+                "priority_score": 0.95,
+                "priority_level": "high",
+                "status": "pending",
+                "created_at": datetime.now().isoformat(),
+                "candidates": {
+                    "entities": [
+                        {"text": "White Spot Syndrome Virus", "label": "PATHOGEN", "start": 0, "end": 25},
+                        {"text": "WSSV", "label": "PATHOGEN", "start": 27, "end": 31},
+                        {"text": "shrimp", "label": "SPECIES", "start": 60, "end": 66}
+                    ],
+                    "relations": [],
+                    "topics": ["T_DISEASE"]
+                }
+            },
+            {
+                "id": 2,
+                "item_id": 2,
+                "doc_id": "demo_002",
+                "sent_id": "s1",
+                "text": "Probiotics can improve water quality in shrimp ponds.",
+                "priority_score": 0.82,
+                "priority_level": "high",
+                "status": "pending",
+                "created_at": datetime.now().isoformat(),
+                "candidates": {
+                    "entities": [
+                        {"text": "Probiotics", "label": "CHEMICAL", "start": 0, "end": 10},
+                        {"text": "shrimp", "label": "SPECIES", "start": 42, "end": 48}
+                    ],
+                    "relations": [],
+                    "topics": ["T_TREATMENT"]
+                }
+            }
+        ]
+        all_items = demo_items
+    
+    # Apply status filter if provided
+    if status and status != "all":
+        all_items = [item for item in all_items if item.get("status") == status]
+    
+    # Sort by priority score (highest first) then by created_at
+    all_items.sort(key=lambda x: (-x.get("priority_score", 0), x.get("created_at", "")))
+    
+    # Apply pagination
+    paginated_items = all_items[offset:offset + limit]
+    
+    logger.info(f"Returning {len(paginated_items)} triage items (total: {len(all_items)})")
     
     return {
-        "items": demo_items[offset:offset + limit],
-        "total": len(demo_items),
+        "items": paginated_items,
+        "total": len(all_items),
         "limit": limit,
         "offset": offset
     }
@@ -291,6 +367,20 @@ async def get_triage_queue(limit: int = 50, offset: int = 0):
 @app.get("/api/triage/next")
 async def get_next_triage_item():
     """Get next item from triage queue"""
+    logger.info(f"Next triage item requested (Storage: {len(triage_queue_store)} items)")
+    
+    # Find highest priority pending item
+    pending_items = [item for item in triage_queue_store if item.get("status") == "pending"]
+    
+    if pending_items:
+        # Sort by priority score (highest first)
+        pending_items.sort(key=lambda x: -x.get("priority_score", 0))
+        next_item = pending_items[0]
+        logger.info(f"Returning next item: {next_item['doc_id']}/{next_item['sent_id']}")
+        return {"item": next_item}
+    
+    # Fallback to demo item if no pending items
+    logger.info("No pending items in storage, returning demo item")
     return {
         "item": {
             "id": 1,
@@ -309,7 +399,10 @@ async def get_next_triage_item():
                 ],
                 "topics": ["T_DISEASE"]
             },
-            "priority_score": 0.95
+            "priority_score": 0.95,
+            "priority_level": "high",
+            "status": "pending",
+            "created_at": datetime.now().isoformat()
         }
     }
 
