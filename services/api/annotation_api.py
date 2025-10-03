@@ -14,6 +14,8 @@ import asyncio
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 import uvicorn
 import time
@@ -191,12 +193,54 @@ if settings.rate_limit_enabled:
     rate_limit_middleware = RateLimitMiddleware(rate_limiter, rate_limit_rules)
     app.middleware("http")(rate_limit_middleware)
 
-# Include authentication endpoints
-from services.api.auth_endpoints import router as auth_router
-app.include_router(auth_router)
+# Serve React frontend static files
+ui_build_path = pipeline_root / "ui" / "build"
+if ui_build_path.exists():
+    # Serve static files
+    app.mount("/static", StaticFiles(directory=str(ui_build_path / "static")), name="static")
+    
+    @app.get("/")
+    async def serve_frontend():
+        """Serve the React frontend"""
+        index_file = ui_build_path / "index.html"
+        if index_file.exists():
+            return FileResponse(str(index_file))
+        return {"message": "🦐 Shrimp Annotation Pipeline API", "frontend": "not_built"}
+    
+    @app.get("/{full_path:path}")
+    async def serve_frontend_routes(full_path: str):
+        """Serve React frontend for all non-API routes"""
+        # Skip API routes
+        if full_path.startswith(("health", "docs", "openapi", "candidates", "documents", "statistics", "auth")):
+            raise HTTPException(status_code=404, detail="API endpoint not found")
+        
+        # Serve index.html for frontend routes
+        index_file = ui_build_path / "index.html"
+        if index_file.exists():
+            return FileResponse(str(index_file))
+        raise HTTPException(status_code=404, detail="Frontend not available")
+else:
+    @app.get("/")
+    async def api_root():
+        """API root when frontend not available"""
+        return {
+            "message": "🦐 Shrimp Annotation Pipeline API",
+            "version": "1.0.0",
+            "status": "running",
+            "frontend": "not_built",
+            "endpoints": {
+                "health": "/health",
+                "docs": "/docs",
+                "openapi": "/openapi.json"
+            }
+        }
 
-# Include retraining endpoints
-# app.include_router(retraining_router)  # Temporarily disabled - requires SQLAlchemy
+# Include authentication endpoints (optional)
+try:
+    from services.api.auth_endpoints import router as auth_router
+    app.include_router(auth_router)
+except ImportError:
+    logger.warning("Authentication endpoints not available")
 
 # Service instances (will be initialized on startup)
 llm_generator: Optional[LLMCandidateGenerator] = None

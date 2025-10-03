@@ -20,11 +20,20 @@ fi
 # Start the application (try full version first, fallback to minimal)
 echo "Starting shrimp annotation pipeline on port $PORT"
 
-# Try the full API first
+# Check if React frontend was built
+if [ -d "ui/build" ]; then
+    echo "React frontend found at ui/build"
+    ls -la ui/build/ | head -5
+else
+    echo "No React frontend build found"
+fi
+
+# Try the full API first (it has better frontend serving)
+echo "Attempting to start full annotation API..."
 if python -c "import services.api.annotation_api" 2>/dev/null; then
-    echo "Starting full annotation API"
+    echo "Starting full annotation API with frontend serving"
     python -m uvicorn services.api.annotation_api:app --host 0.0.0.0 --port $PORT --workers 1
 else
-    echo "Starting minimal Railway-compatible API"
+    echo "Full API failed, starting minimal Railway-compatible API"
     python -m uvicorn railway_api:app --host 0.0.0.0 --port $PORT --workers 1
 fi

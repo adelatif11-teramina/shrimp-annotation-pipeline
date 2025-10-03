@@ -7,9 +7,12 @@ import os
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Any
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import uvicorn
 
@@ -32,6 +35,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve React frontend static files
+ui_build_path = Path(__file__).parent / "ui" / "build"
+if ui_build_path.exists():
+    logger.info(f"Serving React frontend from: {ui_build_path}")
+    # Serve static files
+    app.mount("/static", StaticFiles(directory=str(ui_build_path / "static")), name="static")
+else:
+    logger.warning("React frontend build not found, serving API only")
 
 # Pydantic models
 class DocumentRequest(BaseModel):
@@ -66,17 +78,41 @@ async def health_check():
 
 @app.get("/")
 async def root():
-    """Root endpoint"""
+    """Serve React frontend or API info"""
+    # Try to serve React frontend
+    if ui_build_path.exists():
+        index_file = ui_build_path / "index.html"
+        if index_file.exists():
+            return FileResponse(str(index_file))
+    
+    # Fallback to API info
     return {
         "message": "🦐 Shrimp Annotation Pipeline API",
-        "version": "1.0.0",
+        "version": "1.0.0", 
         "status": "running",
+        "frontend": "not_built" if not ui_build_path.exists() else "available",
         "endpoints": {
             "health": "/health",
             "docs": "/docs",
             "openapi": "/openapi.json"
         }
     }
+
+@app.get("/{full_path:path}")
+async def serve_frontend_routes(full_path: str):
+    """Serve React frontend for all non-API routes"""
+    # Skip API routes
+    if full_path.startswith(("health", "docs", "openapi", "candidates", "documents", "statistics", "ready")):
+        raise HTTPException(status_code=404, detail="API endpoint not found")
+    
+    # Try to serve React frontend
+    if ui_build_path.exists():
+        index_file = ui_build_path / "index.html"
+        if index_file.exists():
+            return FileResponse(str(index_file))
+    
+    # Fallback
+    raise HTTPException(status_code=404, detail="Frontend not available")
 
 @app.get("/ready")
 async def readiness_check():
