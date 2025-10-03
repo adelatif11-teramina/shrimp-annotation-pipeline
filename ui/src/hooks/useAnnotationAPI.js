@@ -53,7 +53,7 @@ export function useAnnotationAPI() {
   };
 
   const getCurrentItem = async (itemId) => {
-    return apiCall(`/triage/queue?limit=50`).then(response => {
+    return apiCall(`/api/triage/queue?limit=50`).then(response => {
       const items = response.items || response;
       // Convert itemId to number for comparison since API returns numeric IDs
       const numericId = parseInt(itemId, 10);
@@ -67,11 +67,11 @@ export function useAnnotationAPI() {
   };
 
   const getNextItem = async () => {
-    return apiCall('/triage/next').then(response => response.item || null);
+    return apiCall('/api/triage/next').then(response => response.item || null);
   };
 
   const submitAnnotation = async (annotation) => {
-    return apiCall('/annotations/decide', {
+    return apiCall('/api/annotations/decide', {
       method: 'POST',
       data: annotation,
     });
@@ -79,13 +79,13 @@ export function useAnnotationAPI() {
 
   const skipItem = async (itemId) => {
     // Mark item as skipped - would need API endpoint
-    return apiCall(`/triage/items/${itemId}/skip`, {
+    return apiCall(`/api/triage/items/${itemId}/skip`, {
       method: 'POST',
     });
   };
 
   const generateCandidates = async (sentenceData) => {
-    return apiCall('/candidates/generate', {
+    return apiCall('/api/candidates/generate', {
       method: 'POST',
       data: sentenceData,
     });
@@ -93,19 +93,19 @@ export function useAnnotationAPI() {
 
   const getTriageQueue = async (filters = {}) => {
     const params = new URLSearchParams(filters);
-    return apiCall(`/triage/queue?${params}`);
+    return apiCall(`/api/triage/queue?${params}`);
   };
 
   const getTriageStatistics = async () => {
-    return apiCall('/triage/statistics');
+    return apiCall('/api/triage/statistics');
   };
 
   const getSystemStatistics = async () => {
-    return apiCall('/statistics/overview');
+    return apiCall('/api/statistics/overview');
   };
 
   const exportGoldData = async (exportRequest) => {
-    return apiCall('/export/gold', {
+    return apiCall('/api/export/gold', {
       method: 'POST',
       data: exportRequest,
     });
@@ -113,11 +113,11 @@ export function useAnnotationAPI() {
 
   const getDocuments = async (filters = {}) => {
     const params = new URLSearchParams(filters);
-    return apiCall(`/documents?${params}`);
+    return apiCall(`/api/documents?${params}`);
   };
 
   const ingestDocument = async (documentData) => {
-    return apiCall('/documents/ingest', {
+    return apiCall('/api/documents/ingest', {
       method: 'POST',
       data: documentData,
     });

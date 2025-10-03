@@ -93,8 +93,10 @@ async def root():
         "frontend": "not_built" if not ui_build_path.exists() else "available",
         "endpoints": {
             "health": "/health",
-            "docs": "/docs",
-            "openapi": "/openapi.json"
+            "api_docs": "/docs",
+            "api_base": "/api",
+            "documents": "/api/documents",
+            "statistics": "/api/statistics/overview"
         }
     }
 
@@ -111,7 +113,7 @@ async def readiness_check():
         }
     }
 
-@app.post("/documents/ingest")
+@app.post("/api/documents/ingest")
 async def ingest_document(doc_request: DocumentRequest):
     """Ingest a document for annotation (minimal implementation)"""
     logger.info(f"Document ingestion requested: {doc_request.doc_id}")
@@ -131,7 +133,7 @@ async def ingest_document(doc_request: DocumentRequest):
         "created_at": datetime.now().isoformat()
     }
 
-@app.post("/candidates/generate")
+@app.post("/api/candidates/generate")
 async def generate_candidates(doc_id: str = "demo", sent_id: str = "s1", text: str = "Sample text"):
     """Generate annotation candidates (minimal implementation)"""
     logger.info(f"Candidate generation requested: {doc_id}/{sent_id}")
@@ -158,7 +160,7 @@ async def generate_candidates(doc_id: str = "demo", sent_id: str = "s1", text: s
         processing_time=0.1
     )
 
-@app.get("/documents")
+@app.get("/api/documents")
 async def get_documents(limit: int = 50, offset: int = 0, search: Optional[str] = None):
     """Get documents list"""
     logger.info(f"Documents list requested: limit={limit}, offset={offset}, search={search}")
@@ -208,7 +210,7 @@ async def get_documents(limit: int = 50, offset: int = 0, search: Optional[str] 
         "offset": offset
     }
 
-@app.get("/statistics/overview")
+@app.get("/api/statistics/overview")
 async def get_statistics():
     """Get system statistics"""
     return {
@@ -217,6 +219,75 @@ async def get_statistics():
         "environment": os.getenv("ENVIRONMENT", "production"),
         "port": os.getenv("PORT", "8000"),
         "status": "running"
+    }
+
+@app.get("/api/triage/queue")
+async def get_triage_queue(limit: int = 50, offset: int = 0):
+    """Get triage queue items"""
+    demo_items = [
+        {
+            "id": 1,
+            "item_id": 1,
+            "doc_id": "demo_001",
+            "sent_id": "s1",
+            "text": "White Spot Syndrome Virus (WSSV) causes significant mortality in shrimp farming.",
+            "priority_score": 0.95,
+            "status": "pending",
+            "created_at": datetime.now().isoformat()
+        },
+        {
+            "id": 2,
+            "item_id": 2,
+            "doc_id": "demo_002",
+            "sent_id": "s1",
+            "text": "Probiotics can improve water quality in shrimp ponds.",
+            "priority_score": 0.82,
+            "status": "pending",
+            "created_at": datetime.now().isoformat()
+        }
+    ]
+    
+    return {
+        "items": demo_items[offset:offset + limit],
+        "total": len(demo_items),
+        "limit": limit,
+        "offset": offset
+    }
+
+@app.get("/api/triage/next")
+async def get_next_triage_item():
+    """Get next item from triage queue"""
+    return {
+        "item": {
+            "id": 1,
+            "item_id": 1,
+            "doc_id": "demo_001",
+            "sent_id": "s1",
+            "text": "White Spot Syndrome Virus (WSSV) causes significant mortality in shrimp farming.",
+            "candidates": {
+                "entities": [
+                    {"text": "White Spot Syndrome Virus", "label": "PATHOGEN", "start": 0, "end": 25},
+                    {"text": "WSSV", "label": "PATHOGEN", "start": 27, "end": 31},
+                    {"text": "shrimp", "label": "SPECIES", "start": 60, "end": 66}
+                ],
+                "relations": [
+                    {"source": "WSSV", "target": "shrimp", "type": "infects"}
+                ],
+                "topics": ["T_DISEASE"]
+            },
+            "priority_score": 0.95
+        }
+    }
+
+@app.post("/api/annotations/decide")
+async def submit_annotation(annotation_data: Dict):
+    """Submit annotation decision"""
+    logger.info(f"Annotation submitted: {annotation_data}")
+    return {
+        "status": "success",
+        "message": "Annotation saved",
+        "annotation_id": 1,
+        "timestamp": datetime.now().isoformat()
     }
 
 # Catch-all route MUST be last to serve React frontend for client-side routing
