@@ -1,0 +1,14 @@
+# Nixpacks configuration for Railway deployment
+
+[phases.build]
+cmds = [
+    "pip install -r requirements.txt",
+    "cd ui && npm install && npm run build"
+]
+
+[phases.start]
+cmd = "python scripts/start_server.py"
+
+[variables]
+NODE_VERSION = "18"
+PYTHON_VERSION = "3.11"

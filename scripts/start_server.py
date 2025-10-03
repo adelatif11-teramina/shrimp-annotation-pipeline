@@ -20,7 +20,8 @@ def check_environment():
     """Check if environment is properly configured"""
     print("🔍 Checking environment...")
     
-    required_vars = ["JWT_SECRET_KEY", "DB_PASSWORD"]
+    # For Railway deployment, only JWT_SECRET_KEY is required (SQLite fallback)
+    required_vars = ["JWT_SECRET_KEY"]
     missing_vars = []
     
     for var in required_vars:
@@ -92,12 +93,15 @@ def start_api_server():
         # Start with uvicorn
         import uvicorn
         
+        # Railway sets PORT environment variable
+        port = int(os.getenv("PORT", settings.api_port))
+        
         uvicorn.run(
             "services.api.annotation_api:app",
-            host=settings.api_host,
-            port=settings.api_port,
+            host="0.0.0.0",  # Railway requires 0.0.0.0
+            port=port,
             reload=settings.is_development,
-            workers=1 if settings.is_development else settings.api_workers,
+            workers=1 if settings.is_development else min(settings.api_workers, 2),  # Limit workers for Railway
             log_level=settings.log_level,
             access_log=True
         )
