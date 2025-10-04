@@ -444,7 +444,7 @@ async def get_next_triage_item():
 @app.post("/api/annotations/decide")
 async def submit_annotation(annotation_data: Dict):
     """Submit annotation decision and return next item"""
-    global triage_queue_store, annotations_store
+    global triage_queue_store, annotations_store, documents_store
     
     logger.info(f"Annotation submitted: {annotation_data}")
     
@@ -496,7 +496,6 @@ async def submit_annotation(annotation_data: Dict):
                 logger.info(f"Document {doc_id} fully completed! Removing from queue and marking as processed")
                 
                 # Remove all triage items for this document
-                global triage_queue_store
                 triage_queue_store = [item for item in triage_queue_store if item.get("doc_id") != doc_id]
                 
                 # Mark document as processed
