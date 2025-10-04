@@ -293,17 +293,17 @@ function AnnotationWorkspace() {
   useHotkeys('ctrl+n', () => loadNextItem(), { preventDefault: true });
   useHotkeys('escape', () => setShowModifyDialog(false), { preventDefault: true });
   
-  // Entity type shortcuts
+  // Entity type shortcuts (v2.0 ontology)
   useHotkeys('1', () => setSelectedEntityType('SPECIES'));
   useHotkeys('2', () => setSelectedEntityType('PATHOGEN'));
   useHotkeys('3', () => setSelectedEntityType('DISEASE'));
-  useHotkeys('4', () => setSelectedEntityType('SYMPTOM'));
-  useHotkeys('5', () => setSelectedEntityType('CHEMICAL'));
-  useHotkeys('6', () => setSelectedEntityType('EQUIPMENT'));
-  useHotkeys('7', () => setSelectedEntityType('LOCATION'));
-  useHotkeys('8', () => setSelectedEntityType('MEASUREMENT'));
-  useHotkeys('9', () => setSelectedEntityType('PROCESS'));
-  useHotkeys('0', () => setSelectedEntityType('FEED'));
+  useHotkeys('4', () => setSelectedEntityType('CLINICAL_SYMPTOM'));
+  useHotkeys('5', () => setSelectedEntityType('PHENOTYPIC_TRAIT'));
+  useHotkeys('6', () => setSelectedEntityType('GENE'));
+  useHotkeys('7', () => setSelectedEntityType('TREATMENT'));
+  useHotkeys('8', () => setSelectedEntityType('LIFE_STAGE'));
+  useHotkeys('9', () => setSelectedEntityType('MEASUREMENT'));
+  useHotkeys('0', () => setSelectedEntityType('LOCATION'));
   
   // Mode switching
   useHotkeys('e', () => setAnnotationMode('entity'));
@@ -792,7 +792,7 @@ function AnnotationWorkspace() {
                       Ctrl+S: Save | Ctrl+N: Next
                     </Typography>
                     <Typography variant="caption" display="block">
-                      1-4: Entity types | ?: Help
+                      1-0: Entity types | ?: Help
                     </Typography>
                   </Box>
                 </CardContent>
@@ -924,15 +924,31 @@ function AnnotationWorkspace() {
                 </Box>
                 <Box display="flex" justifyContent="space-between">
                   <Typography variant="body2"><strong>4</strong></Typography>
-                  <Typography variant="body2">SYMPTOM</Typography>
+                  <Typography variant="body2">CLINICAL_SYMPTOM</Typography>
                 </Box>
                 <Box display="flex" justifyContent="space-between">
                   <Typography variant="body2"><strong>5</strong></Typography>
-                  <Typography variant="body2">CHEMICAL</Typography>
+                  <Typography variant="body2">PHENOTYPIC_TRAIT</Typography>
                 </Box>
                 <Box display="flex" justifyContent="space-between">
-                  <Typography variant="body2"><strong>6-0</strong></Typography>
-                  <Typography variant="body2">More types...</Typography>
+                  <Typography variant="body2"><strong>6</strong></Typography>
+                  <Typography variant="body2">GENE</Typography>
+                </Box>
+                <Box display="flex" justifyContent="space-between">
+                  <Typography variant="body2"><strong>7</strong></Typography>
+                  <Typography variant="body2">TREATMENT</Typography>
+                </Box>
+                <Box display="flex" justifyContent="space-between">
+                  <Typography variant="body2"><strong>8</strong></Typography>
+                  <Typography variant="body2">LIFE_STAGE</Typography>
+                </Box>
+                <Box display="flex" justifyContent="space-between">
+                  <Typography variant="body2"><strong>9</strong></Typography>
+                  <Typography variant="body2">MEASUREMENT</Typography>
+                </Box>
+                <Box display="flex" justifyContent="space-between">
+                  <Typography variant="body2"><strong>0</strong></Typography>
+                  <Typography variant="body2">LOCATION</Typography>
                 </Box>
               </Box>
               

@@ -193,12 +193,13 @@ function EntityAnnotator({ entities, setEntities, entityTypes, selectedType, set
         <Typography variant="subtitle2" gutterBottom>
           Selected Entity Type
         </Typography>
-        <ButtonGroup variant="outlined" size="small" sx={{ flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, maxWidth: '100%' }}>
           {Object.entries(entityTypes).map(([type, config]) => (
             <Button
               key={type}
               variant={selectedType === type ? 'contained' : 'outlined'}
               onClick={() => setSelectedType(type)}
+              size="small"
               sx={{
                 backgroundColor: selectedType === type ? config.color : 'transparent',
                 borderColor: config.color,
@@ -207,13 +208,16 @@ function EntityAnnotator({ entities, setEntities, entityTypes, selectedType, set
                   backgroundColor: config.color,
                   color: 'white',
                 },
-                m: 0.5,
+                minWidth: 'auto',
+                fontSize: '0.75rem',
+                py: 0.5,
+                px: 1,
               }}
             >
               {type}
             </Button>
           ))}
-        </ButtonGroup>
+        </Box>
         <Typography variant="caption" display="block" sx={{ mt: 1 }}>
           {entityTypes[selectedType]?.description}
         </Typography>
