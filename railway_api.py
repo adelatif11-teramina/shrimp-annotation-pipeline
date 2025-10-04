@@ -327,8 +327,8 @@ async def get_triage_queue(
     # Start with all stored triage items
     all_items = triage_queue_store.copy()
     
-    # If no items in storage, create and store demo items (one time only)
-    if not all_items and len(triage_queue_store) == 0:
+    # If no items in storage at all, create demo items (one time only)
+    if len(triage_queue_store) == 0:
         logger.info("No triage items in storage, creating persistent demo items")
         demo_items = [
             {
@@ -375,10 +375,6 @@ async def get_triage_queue(
         # Store demo items persistently so they can be annotated
         triage_queue_store.extend(demo_items)
         all_items = triage_queue_store.copy()
-    elif not all_items:
-        # No items at all (everything completed)
-        logger.info("No pending triage items - queue is empty")
-        all_items = []
     
     # Apply status filter if provided (ignore "undefined" values from frontend)
     if status and status not in ["all", "undefined", "null"]:
@@ -710,6 +706,24 @@ async def reset_all_data():
             "triage_items": triage_count,
             "annotations": anno_count
         }
+    }
+
+@app.post("/api/demo/restart")
+async def restart_demo():
+    """Restart demo with fresh demo items for testing"""
+    global triage_queue_store
+    
+    # Remove only demo items
+    initial_count = len(triage_queue_store)
+    triage_queue_store = [item for item in triage_queue_store if not item.get("doc_id", "").startswith("demo_")]
+    demo_removed = initial_count - len(triage_queue_store)
+    
+    logger.info(f"Restarted demo: removed {demo_removed} demo items")
+    
+    return {
+        "status": "success",
+        "message": f"Demo restarted - removed {demo_removed} demo items",
+        "remaining_items": len(triage_queue_store)
     }
 
 # Catch-all route MUST be last to serve React frontend for client-side routing
