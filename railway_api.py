@@ -420,12 +420,64 @@ async def get_next_triage_item():
 
 @app.post("/api/annotations/decide")
 async def submit_annotation(annotation_data: Dict):
-    """Submit annotation decision"""
+    """Submit annotation decision and return next item"""
+    global triage_queue_store, annotations_store
+    
     logger.info(f"Annotation submitted: {annotation_data}")
+    
+    # Extract key fields
+    item_id = annotation_data.get("item_id") or annotation_data.get("candidate_id")
+    decision = annotation_data.get("decision", "accept")
+    user_id = annotation_data.get("user_id", 1)
+    
+    # Find and update the triage item
+    current_item = None
+    for item in triage_queue_store:
+        if item.get("item_id") == item_id or item.get("id") == item_id:
+            current_item = item
+            item["status"] = "completed"
+            item["decision"] = decision
+            item["completed_at"] = datetime.now().isoformat()
+            break
+    
+    if not current_item:
+        logger.warning(f"Triage item not found for item_id: {item_id}")
+    
+    # Store the annotation
+    annotation = {
+        "id": len(annotations_store) + 1,
+        "item_id": item_id,
+        "user_id": user_id,
+        "decision": decision,
+        "entities": annotation_data.get("entities", []),
+        "relations": annotation_data.get("relations", []),
+        "topics": annotation_data.get("topics", []),
+        "confidence": annotation_data.get("confidence", 0.8),
+        "notes": annotation_data.get("notes", ""),
+        "created_at": datetime.now().isoformat()
+    }
+    annotations_store.append(annotation)
+    
+    # Find next pending item
+    next_item = None
+    pending_items = [item for item in triage_queue_store if item.get("status") == "pending"]
+    
+    if pending_items:
+        # Sort by priority score (highest first)
+        pending_items.sort(key=lambda x: -x.get("priority_score", 0))
+        next_item = pending_items[0]
+        logger.info(f"Next item: {next_item['doc_id']}/{next_item['sent_id']}")
+    else:
+        logger.info("No more pending items in queue")
+    
+    logger.info(f"Annotation saved for item {item_id}, decision: {decision}")
+    
     return {
         "status": "success",
-        "message": "Annotation saved",
-        "annotation_id": 1,
+        "message": f"Annotation {decision}ed successfully",
+        "annotation_id": annotation["id"],
+        "next_item": next_item,
+        "queue_remaining": len(pending_items),
         "timestamp": datetime.now().isoformat()
     }
 

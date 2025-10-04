@@ -304,19 +304,34 @@ function AnnotationWorkspace() {
     if (!currentItem) return;
     
     const annotation = {
-      candidate_id: currentItem.candidate_id,
+      item_id: currentItem.item_id || currentItem.id,
+      candidate_id: currentItem.candidate_id || currentItem.item_id || currentItem.id,
       decision: 'accept',
       entities: entities,
       relations: relations,
       topics: topics,
       confidence: confidence === 'high' ? 0.9 : confidence === 'medium' ? 0.7 : 0.5,
-      notes: notes
+      notes: notes,
+      user_id: 1
     };
     
     try {
-      await submitAnnotation(annotation);
+      console.log('📝 Submitting accept annotation:', annotation);
+      const response = await submitAnnotation(annotation);
       updateSessionStats('completed');
-      loadNextItem();
+      
+      // Move to next item if available
+      if (response.next_item) {
+        console.log('➡️ Moving to next item:', response.next_item.doc_id + '/' + response.next_item.sent_id);
+        setCurrentItem(response.next_item);
+        setEntities(response.next_item.candidates?.entities || []);
+        setRelations(response.next_item.candidates?.relations || []);
+        setTopics(response.next_item.candidates?.topics || []);
+        navigate(`/annotate/${response.next_item.item_id || response.next_item.id}`);
+      } else {
+        console.log('✅ No more items, returning to triage queue');
+        navigate('/triage');
+      }
     } catch (error) {
       console.error('Failed to submit annotation:', error);
     }
@@ -326,15 +341,30 @@ function AnnotationWorkspace() {
     if (!currentItem) return;
     
     const annotation = {
-      candidate_id: currentItem.candidate_id,
-      decision: 'rejected',
-      annotator: 'current-user@example.com',
-      notes: notes
+      item_id: currentItem.item_id || currentItem.id,
+      candidate_id: currentItem.candidate_id || currentItem.item_id || currentItem.id,
+      decision: 'reject',
+      notes: notes,
+      user_id: 1
     };
     
     try {
-      await submitAnnotation(annotation);
-      loadNextItem();
+      console.log('❌ Submitting reject annotation:', annotation);
+      const response = await submitAnnotation(annotation);
+      updateSessionStats('completed');
+      
+      // Move to next item if available
+      if (response.next_item) {
+        console.log('➡️ Moving to next item:', response.next_item.doc_id + '/' + response.next_item.sent_id);
+        setCurrentItem(response.next_item);
+        setEntities(response.next_item.candidates?.entities || []);
+        setRelations(response.next_item.candidates?.relations || []);
+        setTopics(response.next_item.candidates?.topics || []);
+        navigate(`/annotate/${response.next_item.item_id || response.next_item.id}`);
+      } else {
+        console.log('✅ No more items, returning to triage queue');
+        navigate('/triage');
+      }
     } catch (error) {
       console.error('Failed to reject annotation:', error);
     }
@@ -372,9 +402,31 @@ function AnnotationWorkspace() {
   const handleSkip = async () => {
     if (!currentItem) return;
     
+    const annotation = {
+      item_id: currentItem.item_id || currentItem.id,
+      candidate_id: currentItem.candidate_id || currentItem.item_id || currentItem.id,
+      decision: 'skip',
+      notes: 'Skipped by user',
+      user_id: 1
+    };
+    
     try {
+      console.log('⏭️ Submitting skip annotation:', annotation);
+      const response = await submitAnnotation(annotation);
       updateSessionStats('skipped');
-      loadNextItem();
+      
+      // Move to next item if available
+      if (response.next_item) {
+        console.log('➡️ Moving to next item:', response.next_item.doc_id + '/' + response.next_item.sent_id);
+        setCurrentItem(response.next_item);
+        setEntities(response.next_item.candidates?.entities || []);
+        setRelations(response.next_item.candidates?.relations || []);
+        setTopics(response.next_item.candidates?.topics || []);
+        navigate(`/annotate/${response.next_item.item_id || response.next_item.id}`);
+      } else {
+        console.log('✅ No more items, returning to triage queue');
+        navigate('/triage');
+      }
     } catch (error) {
       console.error('Failed to skip item:', error);
     }
