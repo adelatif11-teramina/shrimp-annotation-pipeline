@@ -799,79 +799,6 @@ async def get_annotations(
         }
     }
 
-@app.get("/api/annotations/{annotation_id}")
-async def get_annotation_detail(annotation_id: int):
-    """Get detailed annotation information by ID"""
-    logger.info(f"Annotation detail requested: {annotation_id}")
-    
-    # Find annotation by ID
-    annotation = None
-    for anno in annotations_store:
-        if anno.get("id") == annotation_id:
-            annotation = anno.copy()
-            break
-    
-    if not annotation:
-        raise HTTPException(status_code=404, detail=f"Annotation {annotation_id} not found")
-    
-    # Add additional context information
-    doc_id = annotation.get("doc_id")
-    if doc_id:
-        # Find document information
-        for doc in documents_store:
-            if doc.get("doc_id") == doc_id:
-                annotation["document_info"] = {
-                    "title": doc.get("title", ""),
-                    "source": doc.get("source", ""),
-                    "created_at": doc.get("created_at", ""),
-                    "sentence_count": doc.get("sentence_count", 0),
-                    "status": doc.get("status", "")
-                }
-                break
-        
-        # Find related annotations from same document
-        related_annotations = [
-            {
-                "id": anno.get("id"),
-                "sent_id": anno.get("sent_id"),
-                "decision": anno.get("decision"),
-                "confidence": anno.get("confidence"),
-                "created_at": anno.get("created_at")
-            }
-            for anno in annotations_store 
-            if anno.get("doc_id") == doc_id and anno.get("id") != annotation_id
-        ]
-        annotation["related_annotations"] = related_annotations[:10]  # Limit to 10
-    
-    # Add formatted fields for display
-    annotation["created_at_formatted"] = annotation.get("created_at", "").replace("T", " ").split(".")[0] if annotation.get("created_at") else "Unknown"
-    
-    # Format time spent
-    time_spent = annotation.get("time_spent", 0)
-    if time_spent > 0:
-        if time_spent >= 60:
-            annotation["time_spent_formatted"] = f"{time_spent // 60}m {time_spent % 60}s"
-        else:
-            annotation["time_spent_formatted"] = f"{time_spent}s"
-    else:
-        annotation["time_spent_formatted"] = "Unknown"
-    
-    # Add entity/relation/topic counts
-    annotation["entity_count"] = len(annotation.get("entities", []))
-    annotation["relation_count"] = len(annotation.get("relations", []))
-    annotation["topic_count"] = len(annotation.get("topics", []))
-    
-    logger.info(f"Returning annotation detail for ID {annotation_id}")
-    
-    return {
-        "annotation": annotation,
-        "context": {
-            "doc_id": doc_id,
-            "related_count": len(annotation.get("related_annotations", [])),
-            "has_document_info": "document_info" in annotation
-        }
-    }
-
 @app.get("/api/annotations/statistics")
 async def get_annotation_statistics():
     """Get comprehensive annotation statistics"""
@@ -1216,6 +1143,79 @@ async def export_annotations(
     
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported export format: {format}. Supported formats: json, csv, scibert")
+
+@app.get("/api/annotations/{annotation_id}")
+async def get_annotation_detail(annotation_id: int):
+    """Get detailed annotation information by ID"""
+    logger.info(f"Annotation detail requested: {annotation_id}")
+    
+    # Find annotation by ID
+    annotation = None
+    for anno in annotations_store:
+        if anno.get("id") == annotation_id:
+            annotation = anno.copy()
+            break
+    
+    if not annotation:
+        raise HTTPException(status_code=404, detail=f"Annotation {annotation_id} not found")
+    
+    # Add additional context information
+    doc_id = annotation.get("doc_id")
+    if doc_id:
+        # Find document information
+        for doc in documents_store:
+            if doc.get("doc_id") == doc_id:
+                annotation["document_info"] = {
+                    "title": doc.get("title", ""),
+                    "source": doc.get("source", ""),
+                    "created_at": doc.get("created_at", ""),
+                    "sentence_count": doc.get("sentence_count", 0),
+                    "status": doc.get("status", "")
+                }
+                break
+        
+        # Find related annotations from same document
+        related_annotations = [
+            {
+                "id": anno.get("id"),
+                "sent_id": anno.get("sent_id"),
+                "decision": anno.get("decision"),
+                "confidence": anno.get("confidence"),
+                "created_at": anno.get("created_at")
+            }
+            for anno in annotations_store 
+            if anno.get("doc_id") == doc_id and anno.get("id") != annotation_id
+        ]
+        annotation["related_annotations"] = related_annotations[:10]  # Limit to 10
+    
+    # Add formatted fields for display
+    annotation["created_at_formatted"] = annotation.get("created_at", "").replace("T", " ").split(".")[0] if annotation.get("created_at") else "Unknown"
+    
+    # Format time spent
+    time_spent = annotation.get("time_spent", 0)
+    if time_spent > 0:
+        if time_spent >= 60:
+            annotation["time_spent_formatted"] = f"{time_spent // 60}m {time_spent % 60}s"
+        else:
+            annotation["time_spent_formatted"] = f"{time_spent}s"
+    else:
+        annotation["time_spent_formatted"] = "Unknown"
+    
+    # Add entity/relation/topic counts
+    annotation["entity_count"] = len(annotation.get("entities", []))
+    annotation["relation_count"] = len(annotation.get("relations", []))
+    annotation["topic_count"] = len(annotation.get("topics", []))
+    
+    logger.info(f"Returning annotation detail for ID {annotation_id}")
+    
+    return {
+        "annotation": annotation,
+        "context": {
+            "doc_id": doc_id,
+            "related_count": len(annotation.get("related_annotations", [])),
+            "has_document_info": "document_info" in annotation
+        }
+    }
 
 @app.post("/api/demo/restart")
 async def restart_demo():
