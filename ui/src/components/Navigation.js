@@ -17,6 +17,7 @@ import {
   Assignment as TriageIcon,
   Edit as AnnotateIcon,
   Folder as DocumentsIcon,
+  Analytics as ResultsIcon,
   Assessment as QualityIcon,
   Settings as SettingsIcon,
   Science as ScienceIcon,
@@ -29,6 +30,7 @@ const navigationItems = [
   { path: '/triage', label: 'Triage Queue', icon: TriageIcon, badge: 'pending' },
   { path: '/annotate', label: 'Annotate', icon: AnnotateIcon },
   { path: '/documents', label: 'Documents', icon: DocumentsIcon },
+  { path: '/results', label: 'Annotation Results', icon: ResultsIcon },
   { path: '/quality', label: 'Quality Control', icon: QualityIcon },
   { path: '/settings', label: 'Settings', icon: SettingsIcon },
 ];

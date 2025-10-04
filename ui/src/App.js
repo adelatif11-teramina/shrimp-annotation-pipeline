@@ -10,6 +10,7 @@ import TriageQueue from './pages/TriageQueue';
 import Dashboard from './pages/Dashboard';
 import DocumentManager from './pages/DocumentManager';
 import QualityControl from './pages/QualityControl';
+import AnnotationResults from './pages/AnnotationResults';
 import Settings from './pages/Settings';
 
 // Create theme
@@ -58,6 +59,7 @@ function App() {
                 <Route path="/triage" element={<TriageQueue />} />
                 <Route path="/annotate/:itemId?" element={<AnnotationWorkspace />} />
                 <Route path="/documents" element={<DocumentManager />} />
+                <Route path="/results" element={<AnnotationResults />} />
                 <Route path="/quality" element={<QualityControl />} />
                 <Route path="/settings" element={<Settings />} />
               </Routes>
