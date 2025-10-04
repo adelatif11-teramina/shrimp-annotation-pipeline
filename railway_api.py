@@ -102,6 +102,7 @@ async def root():
             "api_docs": "/docs",
             "api_base": "/api",
             "documents": "/api/documents",
+            "annotations": "/api/annotations",
             "statistics": "/api/statistics/overview"
         }
     }
@@ -496,7 +497,7 @@ async def submit_annotation(annotation_data: Dict):
     if not current_item:
         logger.warning(f"Triage item not found for item_id: {item_id}")
     
-    # Store the annotation
+    # Store the annotation with full context
     annotation = {
         "id": len(annotations_store) + 1,
         "item_id": item_id,
@@ -507,8 +508,23 @@ async def submit_annotation(annotation_data: Dict):
         "topics": annotation_data.get("topics", []),
         "confidence": annotation_data.get("confidence", 0.8),
         "notes": annotation_data.get("notes", ""),
-        "created_at": datetime.now().isoformat()
+        "created_at": datetime.now().isoformat(),
+        # Add context fields
+        "sentence_text": current_item.get("text", "") if current_item else "",
+        "doc_id": current_item.get("doc_id", "") if current_item else "",
+        "sent_id": current_item.get("sent_id", "") if current_item else "",
+        "document_title": "",  # Will be populated below
+        "priority_score": current_item.get("priority_score", 0.0) if current_item else 0.0,
+        "time_spent": annotation_data.get("time_spent", 0),
+        "source": current_item.get("source", "unknown") if current_item else "unknown"
     }
+    
+    # Add document title for context
+    if current_item and current_item.get("doc_id"):
+        for doc in documents_store:
+            if doc.get("doc_id") == current_item.get("doc_id"):
+                annotation["document_title"] = doc.get("title", "")
+                break
     annotations_store.append(annotation)
     
     # Check if document is fully completed
@@ -707,6 +723,499 @@ async def reset_all_data():
             "annotations": anno_count
         }
     }
+
+@app.get("/api/annotations")
+async def get_annotations(
+    decision: Optional[str] = None,
+    doc_id: Optional[str] = None,
+    user_id: Optional[int] = None,
+    limit: int = 50,
+    offset: int = 0,
+    sort_by: Optional[str] = "created_at"
+):
+    """Get annotations with filtering capabilities"""
+    logger.info(f"Annotations requested: decision={decision}, doc_id={doc_id}, user_id={user_id}, limit={limit}, offset={offset}")
+    
+    # Start with all annotations
+    filtered_annotations = annotations_store.copy()
+    
+    # Apply filters
+    if decision and decision != "all":
+        filtered_annotations = [anno for anno in filtered_annotations if anno.get("decision") == decision]
+    
+    if doc_id:
+        filtered_annotations = [anno for anno in filtered_annotations if anno.get("doc_id") == doc_id]
+    
+    if user_id:
+        filtered_annotations = [anno for anno in filtered_annotations if anno.get("user_id") == user_id]
+    
+    # Apply sorting
+    if sort_by == "created_at":
+        filtered_annotations.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    elif sort_by == "priority_score":
+        filtered_annotations.sort(key=lambda x: x.get("priority_score", 0), reverse=True)
+    elif sort_by == "confidence":
+        filtered_annotations.sort(key=lambda x: x.get("confidence", 0), reverse=True)
+    elif sort_by == "time_spent":
+        filtered_annotations.sort(key=lambda x: x.get("time_spent", 0), reverse=True)
+    
+    # Apply pagination
+    total_count = len(filtered_annotations)
+    paginated_annotations = filtered_annotations[offset:offset + limit]
+    
+    # Add derived fields for better display
+    for anno in paginated_annotations:
+        # Truncate long sentence text for list view
+        if anno.get("sentence_text"):
+            anno["sentence_preview"] = anno["sentence_text"][:100] + "..." if len(anno["sentence_text"]) > 100 else anno["sentence_text"]
+        
+        # Add entity/relation counts
+        anno["entity_count"] = len(anno.get("entities", []))
+        anno["relation_count"] = len(anno.get("relations", []))
+        anno["topic_count"] = len(anno.get("topics", []))
+        
+        # Format time spent
+        time_spent = anno.get("time_spent", 0)
+        if time_spent > 0:
+            if time_spent >= 60:
+                anno["time_spent_formatted"] = f"{time_spent // 60}m {time_spent % 60}s"
+            else:
+                anno["time_spent_formatted"] = f"{time_spent}s"
+        else:
+            anno["time_spent_formatted"] = "Unknown"
+    
+    logger.info(f"Returning {len(paginated_annotations)} annotations (total: {total_count})")
+    
+    return {
+        "annotations": paginated_annotations,
+        "total": total_count,
+        "limit": limit,
+        "offset": offset,
+        "filters": {
+            "decision": decision,
+            "doc_id": doc_id,
+            "user_id": user_id,
+            "sort_by": sort_by
+        }
+    }
+
+@app.get("/api/annotations/{annotation_id}")
+async def get_annotation_detail(annotation_id: int):
+    """Get detailed annotation information by ID"""
+    logger.info(f"Annotation detail requested: {annotation_id}")
+    
+    # Find annotation by ID
+    annotation = None
+    for anno in annotations_store:
+        if anno.get("id") == annotation_id:
+            annotation = anno.copy()
+            break
+    
+    if not annotation:
+        raise HTTPException(status_code=404, detail=f"Annotation {annotation_id} not found")
+    
+    # Add additional context information
+    doc_id = annotation.get("doc_id")
+    if doc_id:
+        # Find document information
+        for doc in documents_store:
+            if doc.get("doc_id") == doc_id:
+                annotation["document_info"] = {
+                    "title": doc.get("title", ""),
+                    "source": doc.get("source", ""),
+                    "created_at": doc.get("created_at", ""),
+                    "sentence_count": doc.get("sentence_count", 0),
+                    "status": doc.get("status", "")
+                }
+                break
+        
+        # Find related annotations from same document
+        related_annotations = [
+            {
+                "id": anno.get("id"),
+                "sent_id": anno.get("sent_id"),
+                "decision": anno.get("decision"),
+                "confidence": anno.get("confidence"),
+                "created_at": anno.get("created_at")
+            }
+            for anno in annotations_store 
+            if anno.get("doc_id") == doc_id and anno.get("id") != annotation_id
+        ]
+        annotation["related_annotations"] = related_annotations[:10]  # Limit to 10
+    
+    # Add formatted fields for display
+    annotation["created_at_formatted"] = annotation.get("created_at", "").replace("T", " ").split(".")[0] if annotation.get("created_at") else "Unknown"
+    
+    # Format time spent
+    time_spent = annotation.get("time_spent", 0)
+    if time_spent > 0:
+        if time_spent >= 60:
+            annotation["time_spent_formatted"] = f"{time_spent // 60}m {time_spent % 60}s"
+        else:
+            annotation["time_spent_formatted"] = f"{time_spent}s"
+    else:
+        annotation["time_spent_formatted"] = "Unknown"
+    
+    # Add entity/relation/topic counts
+    annotation["entity_count"] = len(annotation.get("entities", []))
+    annotation["relation_count"] = len(annotation.get("relations", []))
+    annotation["topic_count"] = len(annotation.get("topics", []))
+    
+    logger.info(f"Returning annotation detail for ID {annotation_id}")
+    
+    return {
+        "annotation": annotation,
+        "context": {
+            "doc_id": doc_id,
+            "related_count": len(annotation.get("related_annotations", [])),
+            "has_document_info": "document_info" in annotation
+        }
+    }
+
+@app.get("/api/annotations/statistics")
+async def get_annotation_statistics():
+    """Get comprehensive annotation statistics"""
+    logger.info("Annotation statistics requested")
+    
+    total_annotations = len(annotations_store)
+    
+    if total_annotations == 0:
+        return {
+            "summary": {
+                "total_annotations": 0,
+                "accepted": 0,
+                "rejected": 0,
+                "skipped": 0,
+                "modified": 0,
+                "acceptance_rate": 0,
+                "avg_time_per_annotation": 0
+            },
+            "by_decision": [],
+            "by_document": [],
+            "by_user": [],
+            "by_confidence": [],
+            "by_date": [],
+            "entity_stats": [],
+            "relation_stats": [],
+            "topic_stats": []
+        }
+    
+    # Decision breakdown
+    decisions = {}
+    for anno in annotations_store:
+        decision = anno.get("decision", "unknown")
+        decisions[decision] = decisions.get(decision, 0) + 1
+    
+    accepted = decisions.get("accept", 0)
+    rejected = decisions.get("reject", 0)
+    skipped = decisions.get("skip", 0)
+    modified = decisions.get("modified", 0)
+    
+    # Time statistics
+    time_values = [anno.get("time_spent", 0) for anno in annotations_store if anno.get("time_spent", 0) > 0]
+    avg_time = sum(time_values) / len(time_values) if time_values else 0
+    
+    # Document breakdown
+    doc_stats = {}
+    for anno in annotations_store:
+        doc_id = anno.get("doc_id", "unknown")
+        if doc_id not in doc_stats:
+            doc_stats[doc_id] = {"total": 0, "accepted": 0, "rejected": 0, "skipped": 0}
+        doc_stats[doc_id]["total"] += 1
+        if anno.get("decision") == "accept":
+            doc_stats[doc_id]["accepted"] += 1
+        elif anno.get("decision") == "reject":
+            doc_stats[doc_id]["rejected"] += 1
+        elif anno.get("decision") == "skip":
+            doc_stats[doc_id]["skipped"] += 1
+    
+    # Add document titles
+    doc_breakdown = []
+    for doc_id, stats in doc_stats.items():
+        doc_title = doc_id
+        for doc in documents_store:
+            if doc.get("doc_id") == doc_id:
+                doc_title = doc.get("title", doc_id)
+                break
+        
+        acceptance_rate = round(stats["accepted"] / stats["total"] * 100, 1) if stats["total"] > 0 else 0
+        doc_breakdown.append({
+            "doc_id": doc_id,
+            "doc_title": doc_title,
+            "total": stats["total"],
+            "accepted": stats["accepted"],
+            "rejected": stats["rejected"],
+            "skipped": stats["skipped"],
+            "acceptance_rate": acceptance_rate
+        })
+    
+    # User breakdown
+    user_stats = {}
+    for anno in annotations_store:
+        user_id = anno.get("user_id", "unknown")
+        if user_id not in user_stats:
+            user_stats[user_id] = {"total": 0, "accepted": 0, "time_spent": 0}
+        user_stats[user_id]["total"] += 1
+        if anno.get("decision") == "accept":
+            user_stats[user_id]["accepted"] += 1
+        user_stats[user_id]["time_spent"] += anno.get("time_spent", 0)
+    
+    user_breakdown = []
+    for user_id, stats in user_stats.items():
+        acceptance_rate = round(stats["accepted"] / stats["total"] * 100, 1) if stats["total"] > 0 else 0
+        avg_time_per_user = round(stats["time_spent"] / stats["total"], 1) if stats["total"] > 0 else 0
+        user_breakdown.append({
+            "user_id": user_id,
+            "total": stats["total"],
+            "accepted": stats["accepted"],
+            "acceptance_rate": acceptance_rate,
+            "avg_time_per_annotation": avg_time_per_user
+        })
+    
+    # Confidence breakdown
+    confidence_ranges = {"high": 0, "medium": 0, "low": 0, "unknown": 0}
+    for anno in annotations_store:
+        conf = anno.get("confidence", 0)
+        if conf >= 0.8:
+            confidence_ranges["high"] += 1
+        elif conf >= 0.6:
+            confidence_ranges["medium"] += 1
+        elif conf > 0:
+            confidence_ranges["low"] += 1
+        else:
+            confidence_ranges["unknown"] += 1
+    
+    # Entity type statistics
+    entity_stats = {}
+    for anno in annotations_store:
+        for entity in anno.get("entities", []):
+            entity_type = entity.get("label", "unknown")
+            if entity_type not in entity_stats:
+                entity_stats[entity_type] = 0
+            entity_stats[entity_type] += 1
+    
+    entity_breakdown = [{"type": k, "count": v} for k, v in sorted(entity_stats.items(), key=lambda x: x[1], reverse=True)]
+    
+    # Relation type statistics
+    relation_stats = {}
+    for anno in annotations_store:
+        for relation in anno.get("relations", []):
+            rel_type = relation.get("type", "unknown")
+            if rel_type not in relation_stats:
+                relation_stats[rel_type] = 0
+            relation_stats[rel_type] += 1
+    
+    relation_breakdown = [{"type": k, "count": v} for k, v in sorted(relation_stats.items(), key=lambda x: x[1], reverse=True)]
+    
+    # Topic statistics
+    topic_stats = {}
+    for anno in annotations_store:
+        for topic in anno.get("topics", []):
+            topic_name = topic if isinstance(topic, str) else topic.get("name", "unknown")
+            if topic_name not in topic_stats:
+                topic_stats[topic_name] = 0
+            topic_stats[topic_name] += 1
+    
+    topic_breakdown = [{"topic": k, "count": v} for k, v in sorted(topic_stats.items(), key=lambda x: x[1], reverse=True)]
+    
+    # Date breakdown (by day)
+    from collections import defaultdict
+    date_stats = defaultdict(lambda: {"total": 0, "accepted": 0})
+    for anno in annotations_store:
+        created_at = anno.get("created_at", "")
+        if created_at:
+            date = created_at.split("T")[0]  # Extract date part
+            date_stats[date]["total"] += 1
+            if anno.get("decision") == "accept":
+                date_stats[date]["accepted"] += 1
+    
+    date_breakdown = []
+    for date, stats in sorted(date_stats.items()):
+        acceptance_rate = round(stats["accepted"] / stats["total"] * 100, 1) if stats["total"] > 0 else 0
+        date_breakdown.append({
+            "date": date,
+            "total": stats["total"],
+            "accepted": stats["accepted"],
+            "acceptance_rate": acceptance_rate
+        })
+    
+    return {
+        "summary": {
+            "total_annotations": total_annotations,
+            "accepted": accepted,
+            "rejected": rejected,
+            "skipped": skipped,
+            "modified": modified,
+            "acceptance_rate": round(accepted / total_annotations * 100, 1) if total_annotations > 0 else 0,
+            "avg_time_per_annotation": round(avg_time, 1)
+        },
+        "by_decision": [{"decision": k, "count": v, "percentage": round(v / total_annotations * 100, 1)} for k, v in decisions.items()],
+        "by_document": doc_breakdown,
+        "by_user": user_breakdown,
+        "by_confidence": [{"level": k, "count": v, "percentage": round(v / total_annotations * 100, 1)} for k, v in confidence_ranges.items()],
+        "by_date": date_breakdown,
+        "entity_stats": entity_breakdown,
+        "relation_stats": relation_breakdown,
+        "topic_stats": topic_breakdown
+    }
+
+@app.get("/api/annotations/export")
+async def export_annotations(
+    format: str = "json",
+    decision: Optional[str] = None,
+    doc_id: Optional[str] = None,
+    user_id: Optional[int] = None
+):
+    """Export annotations in various formats"""
+    logger.info(f"Export requested: format={format}, decision={decision}, doc_id={doc_id}, user_id={user_id}")
+    
+    # Filter annotations based on parameters
+    filtered_annotations = annotations_store.copy()
+    
+    if decision and decision != "all":
+        filtered_annotations = [anno for anno in filtered_annotations if anno.get("decision") == decision]
+    
+    if doc_id:
+        filtered_annotations = [anno for anno in filtered_annotations if anno.get("doc_id") == doc_id]
+    
+    if user_id:
+        filtered_annotations = [anno for anno in filtered_annotations if anno.get("user_id") == user_id]
+    
+    # Sort by creation time
+    filtered_annotations.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    
+    if format.lower() == "json":
+        from fastapi.responses import JSONResponse
+        
+        export_data = {
+            "metadata": {
+                "export_timestamp": datetime.now().isoformat(),
+                "total_annotations": len(filtered_annotations),
+                "filters_applied": {
+                    "decision": decision,
+                    "doc_id": doc_id,
+                    "user_id": user_id
+                },
+                "format": "json"
+            },
+            "annotations": filtered_annotations
+        }
+        
+        return JSONResponse(
+            content=export_data,
+            headers={
+                "Content-Disposition": f"attachment; filename=annotations_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            }
+        )
+    
+    elif format.lower() == "csv":
+        import csv
+        import io
+        from fastapi.responses import StreamingResponse
+        
+        # Prepare CSV data
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # CSV headers
+        headers = [
+            "annotation_id", "item_id", "user_id", "decision", "doc_id", "sent_id",
+            "sentence_text", "document_title", "priority_score", "confidence",
+            "entity_count", "relation_count", "topic_count", "time_spent",
+            "created_at", "notes", "source"
+        ]
+        writer.writerow(headers)
+        
+        # CSV rows
+        for anno in filtered_annotations:
+            writer.writerow([
+                anno.get("id", ""),
+                anno.get("item_id", ""),
+                anno.get("user_id", ""),
+                anno.get("decision", ""),
+                anno.get("doc_id", ""),
+                anno.get("sent_id", ""),
+                anno.get("sentence_text", "").replace("\n", " ").replace("\r", " ")[:200],  # Truncate and clean
+                anno.get("document_title", ""),
+                anno.get("priority_score", ""),
+                anno.get("confidence", ""),
+                len(anno.get("entities", [])),
+                len(anno.get("relations", [])),
+                len(anno.get("topics", [])),
+                anno.get("time_spent", ""),
+                anno.get("created_at", ""),
+                anno.get("notes", "").replace("\n", " ").replace("\r", " ")[:100],  # Truncate and clean
+                anno.get("source", "")
+            ])
+        
+        output.seek(0)
+        
+        return StreamingResponse(
+            io.BytesIO(output.getvalue().encode('utf-8')),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f"attachment; filename=annotations_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            }
+        )
+    
+    elif format.lower() == "scibert":
+        # Export in SciBERT training format (CoNLL-like)
+        import io
+        from fastapi.responses import StreamingResponse
+        
+        output = io.StringIO()
+        
+        # Group annotations by document
+        doc_annotations = {}
+        for anno in filtered_annotations:
+            doc_id = anno.get("doc_id", "unknown")
+            if doc_id not in doc_annotations:
+                doc_annotations[doc_id] = []
+            doc_annotations[doc_id].append(anno)
+        
+        # Generate SciBERT format
+        for doc_id, annotations in doc_annotations.items():
+            for anno in annotations:
+                if anno.get("decision") == "accept" and anno.get("entities"):
+                    sentence_text = anno.get("sentence_text", "")
+                    if sentence_text:
+                        # Convert to token-label format
+                        tokens = sentence_text.split()
+                        labels = ["O"] * len(tokens)
+                        
+                        # Map entities to BIO labels
+                        for entity in anno.get("entities", []):
+                            entity_text = entity.get("text", "")
+                            entity_label = entity.get("label", "")
+                            
+                            if entity_text and entity_label:
+                                # Simple token matching (this could be improved)
+                                entity_tokens = entity_text.split()
+                                for i, token in enumerate(tokens):
+                                    if token.startswith(entity_tokens[0] if entity_tokens else ""):
+                                        labels[i] = f"B-{entity_label}"
+                                        # Mark continuation tokens
+                                        for j in range(1, len(entity_tokens)):
+                                            if i + j < len(labels):
+                                                labels[i + j] = f"I-{entity_label}"
+                        
+                        # Write tokens and labels
+                        for token, label in zip(tokens, labels):
+                            output.write(f"{token}\t{label}\n")
+                        output.write("\n")  # Sentence separator
+        
+        output.seek(0)
+        
+        return StreamingResponse(
+            io.BytesIO(output.getvalue().encode('utf-8')),
+            media_type="text/plain",
+            headers={
+                "Content-Disposition": f"attachment; filename=annotations_scibert_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            }
+        )
+    
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported export format: {format}. Supported formats: json, csv, scibert")
 
 @app.post("/api/demo/restart")
 async def restart_demo():
