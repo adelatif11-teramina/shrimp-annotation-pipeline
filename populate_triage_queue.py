@@ -7,6 +7,7 @@ This script bridges the gap between document ingestion and annotation workflow.
 """
 
 import sys
+import os
 import logging
 from pathlib import Path
 import asyncio
@@ -42,13 +43,19 @@ async def populate_triage_queue():
     
     # LLM generator is optional (requires API key)
     llm_generator = None
+    api_key = os.getenv('OPENAI_API_KEY')
     try:
-        llm_generator = LLMCandidateGenerator(
-            provider="openai",
-            model="gpt-4o-mini",
-            cache_dir=project_root / "data/candidates/.cache"
-        )
-        logger.info("✓ LLM candidate generator initialized")
+        if api_key:
+            llm_generator = LLMCandidateGenerator(
+                provider="openai",
+                model="gpt-4o-mini",
+                api_key=api_key,
+                cache_dir=project_root / "data/candidates/.cache"
+            )
+            logger.info("✓ LLM candidate generator initialized with OpenAI")
+        else:
+            logger.warning("OPENAI_API_KEY not found in environment")
+            raise ValueError("OPENAI_API_KEY required")
     except Exception as e:
         logger.warning(f"LLM generator not available: {e}")
         logger.info("Will use rule-based annotation only")
