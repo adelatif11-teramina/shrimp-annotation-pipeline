@@ -1,6 +1,12 @@
 # Shrimp Aquaculture Domain Ontology
-# Version: 1.0
+# Version: 2.0
 # Last Updated: 2025-01-26
+# Changes: Added reified entities, split TRAIT, new supply chain entities, clearer relations
+
+metadata:
+  version: "2.0.0"
+  schema_type: "shrimp_aquaculture_kg"
+  compatibility: "1.0.0"  # Backwards compatible with v1.0
 
 entities:
   SPECIES:
@@ -17,6 +23,8 @@ entities:
       "L. vannamei": "Litopenaeus vannamei"
       "tiger shrimp": "Penaeus monodon"
       "P. monodon": "Penaeus monodon"
+      "whiteleg shrimp": "Penaeus vannamei"
+      "giant tiger prawn": "Penaeus monodon"
   
   PATHOGEN:
     description: "Disease-causing agents"
@@ -26,11 +34,17 @@ entities:
       - "EHP (Enterocytozoon hepatopenaei)"
       - "WSSV"
       - "YHV"
+      - "IHHNV"
+      - "TSV"
     canonical_forms:
       "V. parahaemolyticus": "Vibrio parahaemolyticus"
       "VpTPD": "Vibrio parahaemolyticus (TPD strain)"
+      "VpAHPND": "Vibrio parahaemolyticus (AHPND strain)"
       "white spot virus": "WSSV"
+      "white spot syndrome virus": "WSSV"
       "yellow head virus": "YHV"
+      "Taura syndrome virus": "TSV"
+      "infectious hypodermal and hematopoietic necrosis virus": "IHHNV"
   
   DISEASE:
     description: "Clinical conditions and syndromes"
@@ -40,10 +54,55 @@ entities:
       - "WSD (White Spot Disease)"
       - "EMS (Early Mortality Syndrome)"
       - "White feces syndrome"
+      - "Running mortality syndrome"
     canonical_forms:
       "EMS": "AHPND"
       "early mortality syndrome": "AHPND"
       "white spot": "WSD"
+      "white spot syndrome": "WSD"
+      "WFS": "White feces syndrome"
+  
+  CLINICAL_SYMPTOM:
+    description: "Observed clinical signs or abnormalities"
+    examples:
+      - "white feces"
+      - "lethargy"
+      - "abnormal swimming"
+      - "growth retardation"
+      - "soft shell"
+      - "muscle necrosis"
+      - "melanization"
+      - "red discoloration"
+      - "empty gut"
+    canonical_forms:
+      "slow growth": "growth retardation"
+      "stunted growth": "growth retardation"
+      "white gut": "white feces"
+      "loose shell": "soft shell"
+    disambiguation_rules:
+      - "If described as observed abnormality: CLINICAL_SYMPTOM"
+      - "If measured numerically: PHENOTYPIC_TRAIT"
+  
+  PHENOTYPIC_TRAIT:
+    description: "Measurable performance characteristics"
+    examples:
+      - "survival rate"
+      - "growth rate"
+      - "disease resistance"
+      - "feed conversion ratio (FCR)"
+      - "specific pathogen resistance"
+      - "average daily gain (ADG)"
+      - "biomass"
+      - "yield"
+    canonical_forms:
+      "FCR": "feed conversion ratio"
+      "ADG": "average daily gain"
+      "survival %": "survival rate"
+      "growth performance": "growth rate"
+    attributes:
+      - value: numeric
+      - unit: string
+      - measurement_period: duration
   
   TREATMENT:
     description: "Therapeutic interventions"
@@ -53,10 +112,12 @@ entities:
       - "probiotics"
       - "bacteriophage therapy"
       - "organic acids"
+      - "immunostimulants"
     categories:
-      antibiotics: ["oxytetracycline", "florfenicol", "enrofloxacin"]
-      probiotics: ["Bacillus subtilis", "Lactobacillus", "Pseudomonas"]
-      disinfectants: ["chlorine", "iodine", "formalin"]
+      antibiotics: ["oxytetracycline", "florfenicol", "enrofloxacin", "sulfadiazine"]
+      probiotics: ["Bacillus subtilis", "Lactobacillus", "Pseudomonas", "Saccharomyces"]
+      disinfectants: ["chlorine", "iodine", "formalin", "potassium permanganate"]
+      immunostimulants: ["beta-glucan", "peptidoglycan", "lipopolysaccharide"]
   
   MANAGEMENT_PRACTICE:
     description: "Husbandry and management procedures"
@@ -66,10 +127,12 @@ entities:
       - "pond preparation"
       - "stocking density"
       - "biofloc system"
+      - "partial harvesting"
     categories:
-      biosecurity: ["quarantine", "disinfection", "exclusion"]
-      water_management: ["water exchange", "aeration", "pH adjustment"]
+      biosecurity: ["quarantine", "disinfection", "exclusion", "bird netting"]
+      water_management: ["water exchange", "aeration", "pH adjustment", "liming"]
       feed_management: ["feeding rate", "feed conversion ratio", "feeding frequency"]
+      pond_management: ["pond preparation", "bottom cleaning", "sludge removal"]
 
   GENE:
     description: "Genetic markers and genes"
@@ -79,18 +142,15 @@ entities:
       - "prophenoloxidase"
       - "crustin"
       - "penaeidin"
-    
-  TRAIT:
-    description: "Measurable characteristics"
-    examples:
-      - "survival rate"
-      - "growth rate"
-      - "disease resistance"
-      - "feed conversion ratio"
-      - "specific pathogen resistance"
+      - "lysozyme"
+      - "toll-like receptor"
+    canonical_forms:
+      "proPO": "prophenoloxidase"
+      "TLR": "toll-like receptor"
+      "Hc": "hemocyanin"
     
   LIFE_STAGE:
-    description: "Developmental stages"
+    description: "Developmental stages with typical parameters"
     stages:
       - "nauplius"
       - "zoea"
@@ -103,9 +163,23 @@ entities:
       "PL": "post-larvae"
       "PL10": "post-larvae day 10"
       "PL15": "post-larvae day 15"
+      "N": "nauplius"
+      "Z": "zoea"
+      "M": "mysis"
+    attributes:
+      - duration: "typical days in stage"
+      - weight_range: "typical weight in grams"
+      - size_range: "typical length in mm"
       
   MEASUREMENT:
-    description: "Numeric measurements with units"
+    description: "Reified measurement node with value and metadata"
+    attributes:
+      - value: "numeric value"
+      - unit: "UCUM unit code"
+      - timestamp: "datetime"
+      - measured_in: "reference to LOCATION/POND"
+      - measured_by: "reference to PERSON/SENSOR"
+      - method: "measurement method"
     patterns:
       - pattern: '\d+\.?\d*\s*(ppt|g/L|mg/L)'
         type: "salinity"
@@ -117,6 +191,14 @@ entities:
         type: "length"
       - pattern: '\d+\.?\d*\s*%'
         type: "percentage"
+      - pattern: '\d+\.?\d*\s*ppm'
+        type: "concentration"
+      - pattern: '\d+\.?\d*\s*CFU/mL'
+        type: "bacterial_count"
+    unit_normalization:
+      "ppt": "g/L"
+      "degrees C": "°C"
+      "percent": "%"
         
   ENVIRONMENTAL_PARAM:
     description: "Environmental factors"
@@ -128,6 +210,13 @@ entities:
       - "ammonia"
       - "nitrite"
       - "alkalinity"
+      - "turbidity"
+      - "total suspended solids (TSS)"
+    canonical_forms:
+      "DO": "dissolved oxygen"
+      "NH3": "ammonia"
+      "NO2": "nitrite"
+      "TSS": "total suspended solids"
       
   LOCATION:
     description: "Geographic or facility locations"
@@ -136,7 +225,174 @@ entities:
       - "hatchery"
       - "nursery"
       - "laboratory"
-      - specific_locations: ["Thailand", "Vietnam", "Ecuador", "India"]
+      - "raceway"
+      - specific_locations: ["Thailand", "Vietnam", "Ecuador", "India", "China"]
+    hierarchy:
+      - "country > region > farm > pond"
+      - "facility > building > tank"
+
+  SAMPLE:
+    description: "Physical sample with unique identifier"
+    attributes:
+      - sample_id: "unique identifier"
+      - collection_date: "datetime"
+      - collection_site: "reference to LOCATION"
+      - sample_type: "water/tissue/feed/sediment"
+      - preservation_method: "frozen/ethanol/RNAlater"
+    examples:
+      - "S-2025-001"
+      - "water sample W123"
+      - "hepatopancreas sample HP-456"
+      - "feed sample F-789"
+
+  TEST_TYPE:
+    description: "Diagnostic test methodology"
+    examples:
+      - "PCR"
+      - "qPCR"
+      - "RT-PCR"
+      - "LAMP"
+      - "histopathology"
+      - "bacterial culture"
+      - "ELISA"
+      - "immunofluorescence"
+      - "bioassay"
+    canonical_forms:
+      "real-time PCR": "qPCR"
+      "quantitative PCR": "qPCR"
+      "histology": "histopathology"
+      "IFA": "immunofluorescence"
+
+  TEST_RESULT:
+    description: "Reified test result node"
+    attributes:
+      - test_type: "reference to TEST_TYPE"
+      - pathogen_detected: "boolean"
+      - result_value: "numeric (e.g., Ct value)"
+      - unit: "unit of measurement"
+      - interpretation: "positive/negative/inconclusive"
+      - lab_id: "testing laboratory"
+      - report_date: "datetime"
+    examples:
+      - "WSSV positive (Ct=22)"
+      - "Vibrio count 10^5 CFU/mL"
+      - "negative for EHP"
+
+  EVENT:
+    description: "Timestamped occurrence"
+    types:
+      - "mortality_event"
+      - "outbreak_event"
+      - "treatment_event"
+      - "harvest_event"
+      - "stocking_event"
+      - "sampling_event"
+    attributes:
+      - event_id: "unique identifier"
+      - timestamp: "datetime"
+      - location: "reference to LOCATION"
+      - severity: "low/medium/high/critical"
+      - duration: "time period"
+
+  TISSUE:
+    description: "Anatomical tissue or organ"
+    examples:
+      - "hepatopancreas"
+      - "gill"
+      - "hemolymph"
+      - "muscle"
+      - "gut"
+      - "exoskeleton"
+      - "eyestalk"
+      - "pleopod"
+    canonical_forms:
+      "HP": "hepatopancreas"
+      "digestive gland": "hepatopancreas"
+
+  PRODUCT:
+    description: "Commercial product or lot"
+    examples:
+      - "PL batch B-2025-001"
+      - "frozen shrimp lot FS-123"
+      - "head-on shell-on (HOSO)"
+      - "peeled and deveined (PND)"
+    attributes:
+      - product_id: "unique identifier"
+      - batch_number: "production batch"
+      - production_date: "datetime"
+      - quantity: "amount with unit"
+      - quality_grade: "grade classification"
+
+  SUPPLY_ENTITY:
+    description: "Supply chain participant"
+    examples:
+      - "CP Foods"
+      - "Blue Genetics"
+      - "Local hatchery H-123"
+      - "Feed mill FM-456"
+    types:
+      - "hatchery"
+      - "nursery"
+      - "grow-out farm"
+      - "feed_supplier"
+      - "processor"
+      - "distributor"
+
+  PERSON:
+    description: "Individual involved in operations"
+    roles:
+      - "farmer"
+      - "technician"
+      - "veterinarian"
+      - "manager"
+      - "researcher"
+      - "inspector"
+    attributes:
+      - person_id: "unique identifier"
+      - role: "job function"
+      - organization: "reference to ORGANIZATION"
+
+  ORGANIZATION:
+    description: "Company or institution"
+    types:
+      - "farm"
+      - "company"
+      - "research_institute"
+      - "government_agency"
+      - "certification_body"
+    examples:
+      - "Minh Phu Seafood"
+      - "WorldFish"
+      - "Department of Fisheries"
+      - "GAA (Global Aquaculture Alliance)"
+
+  PROTOCOL:
+    description: "Standard operating procedure"
+    examples:
+      - "biosecurity SOP"
+      - "feeding protocol"
+      - "disease treatment regimen"
+      - "water quality monitoring protocol"
+      - "harvest protocol"
+    attributes:
+      - protocol_id: "unique identifier"
+      - version: "protocol version"
+      - effective_date: "datetime"
+
+  CERTIFICATION:
+    description: "Quality or compliance certification"
+    examples:
+      - "BAP (Best Aquaculture Practices)"
+      - "ASC (Aquaculture Stewardship Council)"
+      - "GlobalGAP"
+      - "organic certification"
+      - "antibiotic-free"
+      - "SPF (Specific Pathogen Free)"
+    attributes:
+      - cert_id: "certificate number"
+      - issuing_body: "reference to ORGANIZATION"
+      - issue_date: "datetime"
+      - expiry_date: "datetime"
 
 relations:
   infected_by:
@@ -145,102 +401,244 @@ relations:
     description: "Host infected by pathogen"
     examples:
       - "Penaeus vannamei infected_by Vibrio parahaemolyticus"
+    attributes:
+      - confidence: "float 0-1"
+      - evidence_span: "text span reference"
       
   causes:
-    domain: PATHOGEN
-    range: DISEASE
-    description: "Pathogen causes disease"
+    domain: [PATHOGEN, ENVIRONMENTAL_PARAM]
+    range: [DISEASE, CLINICAL_SYMPTOM]
+    description: "Causal relationship"
     examples:
       - "Vibrio parahaemolyticus causes AHPND"
       - "WSSV causes WSD"
+      - "low DO causes mortality"
+    attributes:
+      - confidence: "float 0-1"
+      - polarity: "positive/negative/speculative"
       
   treated_with:
-    domain: DISEASE
+    domain: [DISEASE, CLINICAL_SYMPTOM]
     range: TREATMENT
-    description: "Disease treated with intervention"
+    description: "Treatment application"
     examples:
       - "AHPND treated_with florfenicol"
+      - "white feces treated_with probiotics"
+    attributes:
+      - dosage: "amount with unit"
+      - duration: "treatment period"
+      - efficacy: "treatment outcome"
+      
+  confers_resistance_to:
+    domain: GENE
+    range: PATHOGEN
+    description: "Genetic resistance mechanism"
+    examples:
+      - "crustin gene confers_resistance_to Vibrio"
+      - "TLR variant confers_resistance_to WSSV"
+    attributes:
+      - mechanism: "resistance mechanism"
+      - heritability: "genetic heritability value"
       
   resistant_to:
-    domain: [SPECIES, GENE]
+    domain: [SPECIES, PRODUCT]
     range: [PATHOGEN, TREATMENT]
-    description: "Resistance relationship"
+    description: "Observed resistance"
     examples:
       - "SPR line resistant_to WSSV"
+      - "strain X resistant_to oxytetracycline"
       
-  associated_with:
-    domain: [TRAIT, DISEASE]
-    range: [ENVIRONMENTAL_PARAM, MANAGEMENT_PRACTICE]
-    description: "General association"
-    bidirectional: true
-    
+  increases_risk_of:
+    domain: [ENVIRONMENTAL_PARAM, MANAGEMENT_PRACTICE]
+    range: [DISEASE, CLINICAL_SYMPTOM]
+    description: "Risk factor relationship"
+    examples:
+      - "high ammonia increases_risk_of gill damage"
+      - "high stocking density increases_risk_of disease outbreak"
+    attributes:
+      - risk_ratio: "relative risk value"
+      - confidence: "float 0-1"
+      
+  reduces_risk_of:
+    domain: [MANAGEMENT_PRACTICE, TREATMENT]
+    range: [DISEASE, CLINICAL_SYMPTOM]
+    description: "Protective factor"
+    examples:
+      - "biosecurity reduces_risk_of AHPND"
+      - "probiotics reduces_risk_of vibriosis"
+    attributes:
+      - efficacy: "percent reduction"
+      - confidence: "float 0-1"
+      
+  expressed_in:
+    domain: GENE
+    range: [TISSUE, LIFE_STAGE]
+    description: "Gene expression location/stage"
+    examples:
+      - "hemocyanin expressed_in hepatopancreas"
+      - "crustin expressed_in hemolymph"
+    attributes:
+      - expression_level: "relative expression"
+      - regulation: "upregulated/downregulated"
+      
   measurement_of:
     domain: MEASUREMENT
-    range: [TRAIT, ENVIRONMENTAL_PARAM]
-    description: "Measurement of parameter"
+    range: [PHENOTYPIC_TRAIT, ENVIRONMENTAL_PARAM]
+    description: "Measurement target"
+    examples:
+      - "28°C measurement_of temperature"
+      - "85% measurement_of survival rate"
     
+  sample_taken_from:
+    domain: SAMPLE
+    range: [LOCATION, SPECIES, TISSUE]
+    description: "Sample source"
+    examples:
+      - "S-001 sample_taken_from pond P1"
+      - "HP-123 sample_taken_from hepatopancreas"
+      
+  tested_with:
+    domain: SAMPLE
+    range: TEST_TYPE
+    description: "Test performed on sample"
+    examples:
+      - "S-001 tested_with PCR"
+      - "water sample tested_with bacterial culture"
+      
+  has_test_result:
+    domain: SAMPLE
+    range: TEST_RESULT
+    description: "Test outcome"
+    examples:
+      - "S-001 has_test_result WSSV positive"
+      
+  applied_at:
+    domain: [TREATMENT, MANAGEMENT_PRACTICE]
+    range: [LOCATION, EVENT]
+    description: "Application site/time"
+    examples:
+      - "florfenicol applied_at pond P1"
+      - "lime applied_at stocking_event"
+    attributes:
+      - timestamp: "datetime"
+      - dosage: "amount with unit"
+      
   located_in:
     domain: "*"
     range: LOCATION
     description: "Spatial relationship"
     
+  supplied_by:
+    domain: [PRODUCT, TREATMENT]
+    range: [SUPPLY_ENTITY, ORGANIZATION]
+    description: "Supply chain relationship"
+    examples:
+      - "PL batch supplied_by Blue Genetics"
+      
+  sold_to:
+    domain: PRODUCT
+    range: [ORGANIZATION, PERSON]
+    description: "Commercial transaction"
+    attributes:
+      - quantity: "amount"
+      - price: "value with currency"
+      - date: "datetime"
+      
+  uses_protocol:
+    domain: [EVENT, ORGANIZATION, PERSON]
+    range: PROTOCOL
+    description: "Protocol application"
+    examples:
+      - "treatment_event uses_protocol disease SOP"
+      
+  certified_by:
+    domain: [PRODUCT, ORGANIZATION, LOCATION]
+    range: CERTIFICATION
+    description: "Certification status"
+    examples:
+      - "farm certified_by BAP"
+      - "product certified_by organic"
+      
   affects_trait:
-    domain: [GENE, ENVIRONMENTAL_PARAM]
-    range: TRAIT
-    description: "Factor affecting trait"
+    domain: [GENE, ENVIRONMENTAL_PARAM, MANAGEMENT_PRACTICE]
+    range: PHENOTYPIC_TRAIT
+    description: "Factor affecting measurable trait"
+    examples:
+      - "PvIGF affects_trait growth rate"
+      - "temperature affects_trait feed intake"
+    attributes:
+      - effect_size: "magnitude of effect"
+      - direction: "positive/negative"
     
   has_variant:
     domain: GENE
     range: GENE
     description: "Genetic variant relationship"
+    examples:
+      - "TLR has_variant TLR-mut1"
+
+  part_of:
+    domain: [LOCATION, PRODUCT, SAMPLE]
+    range: [LOCATION, PRODUCT]
+    description: "Hierarchical grouping"
+    examples:
+      - "pond P1 part_of farm F1"
+      - "sample S1 part_of batch B1"
 
 topics:
   T_DISEASE:
     name: "Disease & Pathology"
-    keywords: ["disease", "pathogen", "mortality", "syndrome", "infection", "outbreak"]
+    keywords: ["disease", "pathogen", "mortality", "syndrome", "infection", "outbreak", "symptom", "diagnosis"]
     scope: "Disease mechanisms, pathology, epidemiology"
     
   T_TREATMENT:
     name: "Treatment & Therapeutics"
-    keywords: ["treatment", "antibiotic", "probiotic", "therapy", "medication"]
+    keywords: ["treatment", "antibiotic", "probiotic", "therapy", "medication", "drug", "efficacy"]
     scope: "Therapeutic interventions and treatments"
     
   T_GENETICS:
     name: "Genetics & Breeding"
-    keywords: ["gene", "breeding", "selection", "heritability", "QTL", "SNP"]
+    keywords: ["gene", "breeding", "selection", "heritability", "QTL", "SNP", "genomics", "trait"]
     scope: "Genetic improvement and selective breeding"
     
   T_MANAGEMENT:
     name: "Farm Management"
-    keywords: ["management", "husbandry", "stocking", "harvest", "production"]
+    keywords: ["management", "husbandry", "stocking", "harvest", "production", "farming", "practice"]
     scope: "Aquaculture management practices"
     
   T_ENVIRONMENT:
     name: "Environmental Parameters"
-    keywords: ["water quality", "temperature", "salinity", "oxygen", "pH"]
+    keywords: ["water quality", "temperature", "salinity", "oxygen", "pH", "ammonia", "environment"]
     scope: "Environmental conditions and monitoring"
     
   T_REPRODUCTION:
     name: "Reproduction & Hatchery"
-    keywords: ["spawning", "larvae", "maturation", "broodstock", "hatchery"]
+    keywords: ["spawning", "larvae", "maturation", "broodstock", "hatchery", "nauplii", "reproduction"]
     scope: "Reproductive biology and hatchery operations"
     
   T_NUTRITION:
     name: "Nutrition & Feed"
-    keywords: ["feed", "nutrition", "protein", "lipid", "vitamin", "FCR"]
+    keywords: ["feed", "nutrition", "protein", "lipid", "vitamin", "FCR", "diet", "feeding"]
     scope: "Nutritional requirements and feed management"
     
   T_BIOSECURITY:
     name: "Biosecurity & Prevention"
-    keywords: ["biosecurity", "prevention", "quarantine", "disinfection", "SPF"]
+    keywords: ["biosecurity", "prevention", "quarantine", "disinfection", "SPF", "exclusion", "control"]
     scope: "Disease prevention and biosecurity measures"
     
   T_ECONOMICS:
     name: "Economics & Markets"
-    keywords: ["cost", "price", "market", "profit", "economics", "trade"]
+    keywords: ["cost", "price", "market", "profit", "economics", "trade", "value", "export"]
     scope: "Economic aspects of shrimp farming"
     
   T_DIAGNOSTICS:
     name: "Diagnostics & Detection"
-    keywords: ["PCR", "diagnosis", "detection", "screening", "test", "assay"]
+    keywords: ["PCR", "diagnosis", "detection", "screening", "test", "assay", "identification", "monitoring"]
     scope: "Disease diagnostics and detection methods"
+
+# Backwards compatibility mappings
+legacy_mappings:
+  entities:
+    "TRAIT": "PHENOTYPIC_TRAIT"  # Default mapping for old TRAIT annotations
+  relations:
+    "associated_with": "affects_trait"  # Default for trait associations

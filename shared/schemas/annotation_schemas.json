@@ -1,4 +1,6 @@
 {
+  "version": "2.0.0",
+  "compatible_with": ["1.0.0"],
   "schemas": {
     "document": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -6,7 +8,7 @@
       "required": ["doc_id", "source", "sentences"],
       "properties": {
         "doc_id": {"type": "string", "pattern": "^[a-zA-Z0-9_-]+$"},
-        "source": {"type": "string", "enum": ["paper", "report", "hatchery_log", "manual", "dataset"]},
+        "source": {"type": "string", "enum": ["paper", "report", "hatchery_log", "manual", "dataset", "sensor_data", "lab_report"]},
         "title": {"type": "string"},
         "pub_date": {"type": "string", "format": "date"},
         "raw_text": {"type": "string"},
@@ -48,7 +50,9 @@
                   "label": {"$ref": "#/definitions/entity_label"},
                   "start": {"type": "integer", "minimum": 0},
                   "end": {"type": "integer", "minimum": 0},
-                  "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+                  "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                  "canonical": {"type": "string"},
+                  "attributes": {"$ref": "#/definitions/entity_attributes"}
                 }
               }
             },
@@ -63,7 +67,9 @@
                   "tail_cid": {"type": "integer"},
                   "label": {"$ref": "#/definitions/relation_label"},
                   "evidence": {"type": "string"},
-                  "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+                  "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                  "polarity": {"type": "string", "enum": ["positive", "negative", "speculative"]},
+                  "attributes": {"$ref": "#/definitions/relation_attributes"}
                 }
               }
             },
@@ -113,7 +119,8 @@
               "start": {"type": "integer", "minimum": 0},
               "end": {"type": "integer", "minimum": 0},
               "canonical": {"type": "string"},
-              "confidence": {"type": "string", "enum": ["high", "medium", "low"]}
+              "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+              "attributes": {"$ref": "#/definitions/entity_attributes"}
             }
           }
         },
@@ -133,7 +140,9 @@
                 "minItems": 2,
                 "maxItems": 2
               },
-              "polarity": {"type": "string", "enum": ["positive", "negative", "speculative"]}
+              "polarity": {"type": "string", "enum": ["positive", "negative", "speculative"]},
+              "provenance": {"type": "array", "items": {"type": "string"}},
+              "attributes": {"$ref": "#/definitions/relation_attributes"}
             }
           }
         },
@@ -154,6 +163,57 @@
         "timestamp": {"type": "string", "format": "date-time"},
         "notes": {"type": "string"}
       }
+    },
+    
+    "measurement_entity": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "description": "Reified measurement node",
+      "required": ["entity_id", "value", "unit"],
+      "properties": {
+        "entity_id": {"type": "string"},
+        "value": {"type": "number"},
+        "unit": {"type": "string", "pattern": "^[a-zA-Z°%/]+$"},
+        "timestamp": {"type": "string", "format": "date-time"},
+        "measured_in": {"type": "string", "description": "Reference to LOCATION entity"},
+        "measured_by": {"type": "string", "description": "Reference to PERSON/SENSOR"},
+        "method": {"type": "string"},
+        "parameter_type": {"$ref": "#/definitions/measurement_type"}
+      }
+    },
+    
+    "test_result_entity": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "description": "Reified test result node",
+      "required": ["result_id", "test_type", "interpretation"],
+      "properties": {
+        "result_id": {"type": "string"},
+        "test_type": {"$ref": "#/definitions/test_type_enum"},
+        "pathogen_detected": {"type": "boolean"},
+        "result_value": {"type": "number"},
+        "unit": {"type": "string"},
+        "interpretation": {"type": "string", "enum": ["positive", "negative", "inconclusive", "borderline"]},
+        "ct_value": {"type": "number", "minimum": 0, "maximum": 50},
+        "lab_id": {"type": "string"},
+        "report_date": {"type": "string", "format": "date-time"},
+        "sample_ref": {"type": "string", "description": "Reference to SAMPLE entity"}
+      }
+    },
+    
+    "sample_entity": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "description": "Physical sample node",
+      "required": ["sample_id", "sample_type", "collection_date"],
+      "properties": {
+        "sample_id": {"type": "string", "pattern": "^[A-Z0-9-]+$"},
+        "sample_type": {"type": "string", "enum": ["water", "tissue", "feed", "sediment", "hemolymph", "hepatopancreas"]},
+        "collection_date": {"type": "string", "format": "date-time"},
+        "collection_site": {"type": "string", "description": "Reference to LOCATION"},
+        "preservation_method": {"type": "string", "enum": ["frozen", "ethanol", "RNAlater", "formalin", "fresh"]},
+        "chain_of_custody": {"type": "array", "items": {"type": "string"}}
+      }
     }
   },
   
@@ -161,18 +221,22 @@
     "entity_label": {
       "type": "string",
       "enum": [
-        "SPECIES", "PATHOGEN", "DISEASE", "GENE", "TREATMENT", 
-        "MEASUREMENT", "LIFE_STAGE", "MANAGEMENT_PRACTICE", 
-        "ENVIRONMENTAL_PARAM", "LOCATION", "TRAIT"
+        "SPECIES", "PATHOGEN", "DISEASE", "CLINICAL_SYMPTOM", "PHENOTYPIC_TRAIT",
+        "GENE", "TREATMENT", "MEASUREMENT", "LIFE_STAGE", "MANAGEMENT_PRACTICE", 
+        "ENVIRONMENTAL_PARAM", "LOCATION", "SAMPLE", "TEST_TYPE", "TEST_RESULT",
+        "EVENT", "TISSUE", "PRODUCT", "SUPPLY_ENTITY", "PERSON", "ORGANIZATION",
+        "PROTOCOL", "CERTIFICATION"
       ]
     },
     
     "relation_label": {
       "type": "string",
       "enum": [
-        "infected_by", "causes", "treated_with", "resistant_to",
-        "associated_with", "measurement_of", "located_in", 
-        "affects_trait", "has_variant"
+        "infected_by", "causes", "treated_with", "confers_resistance_to", "resistant_to",
+        "increases_risk_of", "reduces_risk_of", "expressed_in", "measurement_of",
+        "sample_taken_from", "tested_with", "has_test_result", "applied_at",
+        "located_in", "supplied_by", "sold_to", "uses_protocol", "certified_by",
+        "affects_trait", "has_variant", "part_of"
       ]
     },
     
@@ -183,6 +247,191 @@
         "T_ENVIRONMENT", "T_REPRODUCTION", "T_NUTRITION", 
         "T_BIOSECURITY", "T_ECONOMICS", "T_DIAGNOSTICS"
       ]
+    },
+    
+    "entity_attributes": {
+      "type": "object",
+      "description": "Entity-specific attributes based on type",
+      "properties": {
+        "value": {"type": "number"},
+        "unit": {"type": "string"},
+        "timestamp": {"type": "string", "format": "date-time"},
+        "sample_id": {"type": "string"},
+        "test_type": {"type": "string"},
+        "result_value": {"type": "number"},
+        "ct_value": {"type": "number"},
+        "product_id": {"type": "string"},
+        "batch_number": {"type": "string"},
+        "person_id": {"type": "string"},
+        "protocol_version": {"type": "string"},
+        "cert_number": {"type": "string"}
+      }
+    },
+    
+    "relation_attributes": {
+      "type": "object",
+      "description": "Relation-specific attributes",
+      "properties": {
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "evidence_span": {"type": "array", "items": {"type": "integer"}},
+        "provenance": {"type": "array", "items": {"type": "string"}},
+        "polarity": {"type": "string", "enum": ["positive", "negative", "speculative"]},
+        "dosage": {"type": "string"},
+        "duration": {"type": "string"},
+        "efficacy": {"type": "number"},
+        "risk_ratio": {"type": "number"},
+        "effect_size": {"type": "number"},
+        "direction": {"type": "string", "enum": ["positive", "negative", "neutral"]},
+        "expression_level": {"type": "string"},
+        "regulation": {"type": "string", "enum": ["upregulated", "downregulated", "unchanged"]},
+        "mechanism": {"type": "string"},
+        "heritability": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    
+    "measurement_type": {
+      "type": "string",
+      "enum": [
+        "temperature", "salinity", "dissolved_oxygen", "pH", "ammonia", "nitrite",
+        "alkalinity", "turbidity", "weight", "length", "survival_rate", "growth_rate",
+        "FCR", "bacterial_count", "viral_load"
+      ]
+    },
+    
+    "test_type_enum": {
+      "type": "string",
+      "enum": [
+        "PCR", "qPCR", "RT-PCR", "LAMP", "histopathology", "bacterial_culture",
+        "ELISA", "immunofluorescence", "bioassay", "sequencing", "microscopy"
+      ]
+    },
+    
+    "domain_range_constraints": {
+      "description": "Domain and range constraints for relations",
+      "infected_by": {
+        "domain": ["SPECIES"],
+        "range": ["PATHOGEN"]
+      },
+      "causes": {
+        "domain": ["PATHOGEN", "ENVIRONMENTAL_PARAM"],
+        "range": ["DISEASE", "CLINICAL_SYMPTOM"]
+      },
+      "treated_with": {
+        "domain": ["DISEASE", "CLINICAL_SYMPTOM"],
+        "range": ["TREATMENT"]
+      },
+      "confers_resistance_to": {
+        "domain": ["GENE"],
+        "range": ["PATHOGEN"]
+      },
+      "resistant_to": {
+        "domain": ["SPECIES", "PRODUCT"],
+        "range": ["PATHOGEN", "TREATMENT"]
+      },
+      "increases_risk_of": {
+        "domain": ["ENVIRONMENTAL_PARAM", "MANAGEMENT_PRACTICE"],
+        "range": ["DISEASE", "CLINICAL_SYMPTOM"]
+      },
+      "reduces_risk_of": {
+        "domain": ["MANAGEMENT_PRACTICE", "TREATMENT"],
+        "range": ["DISEASE", "CLINICAL_SYMPTOM"]
+      },
+      "expressed_in": {
+        "domain": ["GENE"],
+        "range": ["TISSUE", "LIFE_STAGE"]
+      },
+      "measurement_of": {
+        "domain": ["MEASUREMENT"],
+        "range": ["PHENOTYPIC_TRAIT", "ENVIRONMENTAL_PARAM"]
+      },
+      "sample_taken_from": {
+        "domain": ["SAMPLE"],
+        "range": ["LOCATION", "SPECIES", "TISSUE"]
+      },
+      "tested_with": {
+        "domain": ["SAMPLE"],
+        "range": ["TEST_TYPE"]
+      },
+      "has_test_result": {
+        "domain": ["SAMPLE"],
+        "range": ["TEST_RESULT"]
+      },
+      "applied_at": {
+        "domain": ["TREATMENT", "MANAGEMENT_PRACTICE"],
+        "range": ["LOCATION", "EVENT"]
+      },
+      "located_in": {
+        "domain": ["*"],
+        "range": ["LOCATION"]
+      },
+      "supplied_by": {
+        "domain": ["PRODUCT", "TREATMENT"],
+        "range": ["SUPPLY_ENTITY", "ORGANIZATION"]
+      },
+      "sold_to": {
+        "domain": ["PRODUCT"],
+        "range": ["ORGANIZATION", "PERSON"]
+      },
+      "uses_protocol": {
+        "domain": ["EVENT", "ORGANIZATION", "PERSON"],
+        "range": ["PROTOCOL"]
+      },
+      "certified_by": {
+        "domain": ["PRODUCT", "ORGANIZATION", "LOCATION"],
+        "range": ["CERTIFICATION"]
+      },
+      "affects_trait": {
+        "domain": ["GENE", "ENVIRONMENTAL_PARAM", "MANAGEMENT_PRACTICE"],
+        "range": ["PHENOTYPIC_TRAIT"]
+      },
+      "has_variant": {
+        "domain": ["GENE"],
+        "range": ["GENE"]
+      },
+      "part_of": {
+        "domain": ["LOCATION", "PRODUCT", "SAMPLE"],
+        "range": ["LOCATION", "PRODUCT"]
+      }
+    },
+    
+    "validation_rules": {
+      "measurement_validation": {
+        "temperature": {"min": 0, "max": 50, "unit": "°C"},
+        "salinity": {"min": 0, "max": 50, "unit": "ppt|g/L"},
+        "dissolved_oxygen": {"min": 0, "max": 20, "unit": "mg/L|ppm"},
+        "pH": {"min": 0, "max": 14, "unit": ""},
+        "ammonia": {"min": 0, "max": 10, "unit": "mg/L|ppm"},
+        "survival_rate": {"min": 0, "max": 100, "unit": "%"},
+        "ct_value": {"min": 0, "max": 50, "unit": ""}
+      },
+      "canonical_confidence": {
+        "high": 0.9,
+        "medium": 0.7,
+        "low": 0.5
+      }
+    }
+  },
+  
+  "migration": {
+    "from_v1": {
+      "entity_mappings": {
+        "TRAIT": {
+          "default": "PHENOTYPIC_TRAIT",
+          "rules": [
+            {"if_contains": ["retardation", "necrosis", "lethargy"], "map_to": "CLINICAL_SYMPTOM"},
+            {"if_numeric": true, "map_to": "PHENOTYPIC_TRAIT"}
+          ]
+        }
+      },
+      "relation_mappings": {
+        "associated_with": {
+          "default": "affects_trait",
+          "rules": [
+            {"if_domain": "ENVIRONMENTAL_PARAM", "if_range": "DISEASE", "map_to": "increases_risk_of"},
+            {"if_domain": "GENE", "if_range": "PHENOTYPIC_TRAIT", "map_to": "affects_trait"}
+          ]
+        }
+      }
     }
   }
 }
