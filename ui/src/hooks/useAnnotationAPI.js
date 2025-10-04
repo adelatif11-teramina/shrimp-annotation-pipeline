@@ -123,6 +123,40 @@ export function useAnnotationAPI() {
     });
   };
 
+  // New annotation results functions
+  const getAnnotations = async (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value && value !== 'all') {
+        params.append(key, value);
+      }
+    });
+    return apiCall(`/api/annotations?${params}`);
+  };
+
+  const getAnnotationDetail = async (annotationId) => {
+    return apiCall(`/api/annotations/${annotationId}`);
+  };
+
+  const getAnnotationStatistics = async () => {
+    return apiCall('/api/annotations/statistics');
+  };
+
+  const exportAnnotations = async (filters = {}, format = 'json') => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value && value !== 'all') {
+        params.append(key, value);
+      }
+    });
+    params.append('format', format);
+    
+    // For exports, we need to handle file downloads differently
+    const url = `/api/annotations/export?${params}`;
+    window.open(url, '_blank');
+    return { success: true };
+  };
+
   return {
     getCurrentItem,
     getNextItem,
@@ -135,6 +169,11 @@ export function useAnnotationAPI() {
     exportGoldData,
     getDocuments,
     ingestDocument,
+    getAnnotations,
+    getAnnotationDetail,
+    getAnnotationStatistics,
+    exportAnnotations,
+    apiCall, // Export apiCall for direct use
     isLoading,
     error,
   };

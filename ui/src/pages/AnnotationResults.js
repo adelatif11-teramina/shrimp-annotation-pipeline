@@ -68,7 +68,12 @@ function AnnotationResults() {
     total: 0
   });
   
-  const { apiCall } = useAnnotationAPI();
+  const { 
+    getAnnotations, 
+    getAnnotationDetail, 
+    getAnnotationStatistics, 
+    exportAnnotations 
+  } = useAnnotationAPI();
 
   useEffect(() => {
     loadAnnotations();
@@ -78,20 +83,13 @@ function AnnotationResults() {
   const loadAnnotations = async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams({
+      const apiFilters = {
         ...filters,
         limit: pagination.limit,
         offset: (pagination.page - 1) * pagination.limit
-      });
+      };
       
-      // Remove empty filters
-      Object.keys(filters).forEach(key => {
-        if (!filters[key] || filters[key] === 'all') {
-          params.delete(key);
-        }
-      });
-      
-      const response = await apiCall(`/api/annotations?${params}`);
+      const response = await getAnnotations(apiFilters);
       
       setAnnotations(response.annotations || []);
       setPagination(prev => ({
@@ -108,7 +106,7 @@ function AnnotationResults() {
 
   const loadStatistics = async () => {
     try {
-      const response = await apiCall('/api/annotations/statistics');
+      const response = await getAnnotationStatistics();
       setStatistics(response);
     } catch (error) {
       console.error('Failed to load statistics:', error);
@@ -117,7 +115,7 @@ function AnnotationResults() {
 
   const handleViewDetail = async (annotationId) => {
     try {
-      const response = await apiCall(`/api/annotations/${annotationId}`);
+      const response = await getAnnotationDetail(annotationId);
       setSelectedAnnotation(response.annotation);
       setShowDetailDialog(true);
     } catch (error) {
@@ -127,16 +125,7 @@ function AnnotationResults() {
 
   const handleExport = async (format) => {
     try {
-      const params = new URLSearchParams(filters);
-      // Remove empty filters
-      Object.keys(filters).forEach(key => {
-        if (!filters[key] || filters[key] === 'all') {
-          params.delete(key);
-        }
-      });
-      params.set('format', format);
-      
-      window.open(`/api/annotations/export?${params}`, '_blank');
+      await exportAnnotations(filters, format);
       setShowExportDialog(false);
     } catch (error) {
       console.error('Failed to export annotations:', error);
