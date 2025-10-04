@@ -327,9 +327,9 @@ async def get_triage_queue(
     # Start with all stored triage items
     all_items = triage_queue_store.copy()
     
-    # If no items in storage, return demo items
-    if not all_items:
-        logger.info("No triage items in storage, returning demo items")
+    # If no items in storage, create and store demo items (one time only)
+    if not all_items and len(triage_queue_store) == 0:
+        logger.info("No triage items in storage, creating persistent demo items")
         demo_items = [
             {
                 "id": 1,
@@ -371,7 +371,14 @@ async def get_triage_queue(
                 }
             }
         ]
-        all_items = demo_items
+        
+        # Store demo items persistently so they can be annotated
+        triage_queue_store.extend(demo_items)
+        all_items = triage_queue_store.copy()
+    elif not all_items:
+        # No items at all (everything completed)
+        logger.info("No pending triage items - queue is empty")
+        all_items = []
     
     # Apply status filter if provided (ignore "undefined" values from frontend)
     if status and status not in ["all", "undefined", "null"]:
@@ -402,7 +409,57 @@ async def get_triage_queue(
 @app.get("/api/triage/next")
 async def get_next_triage_item():
     """Get next item from triage queue"""
+    global triage_queue_store
+    
     logger.info(f"Next triage item requested (Storage: {len(triage_queue_store)} items)")
+    
+    # If no items at all, create demo items first
+    if len(triage_queue_store) == 0:
+        logger.info("Creating demo items for next item request")
+        demo_items = [
+            {
+                "id": 1,
+                "item_id": 1,
+                "doc_id": "demo_001",
+                "sent_id": "s1",
+                "text": "White Spot Syndrome Virus (WSSV) causes significant mortality in shrimp farming.",
+                "priority_score": 0.95,
+                "priority_level": "high",
+                "status": "pending",
+                "created_at": datetime.now().isoformat(),
+                "candidates": {
+                    "entities": [
+                        {"text": "White Spot Syndrome Virus", "label": "PATHOGEN", "start": 0, "end": 25},
+                        {"text": "WSSV", "label": "PATHOGEN", "start": 27, "end": 31},
+                        {"text": "shrimp", "label": "SPECIES", "start": 60, "end": 66}
+                    ],
+                    "relations": [
+                        {"source": "WSSV", "target": "shrimp", "type": "infects"}
+                    ],
+                    "topics": ["T_DISEASE"]
+                }
+            },
+            {
+                "id": 2,
+                "item_id": 2,
+                "doc_id": "demo_002",
+                "sent_id": "s1",
+                "text": "Probiotics can improve water quality in shrimp ponds.",
+                "priority_score": 0.82,
+                "priority_level": "high",
+                "status": "pending",
+                "created_at": datetime.now().isoformat(),
+                "candidates": {
+                    "entities": [
+                        {"text": "Probiotics", "label": "CHEMICAL", "start": 0, "end": 10},
+                        {"text": "shrimp", "label": "SPECIES", "start": 42, "end": 48}
+                    ],
+                    "relations": [],
+                    "topics": ["T_TREATMENT"]
+                }
+            }
+        ]
+        triage_queue_store.extend(demo_items)
     
     # Find highest priority pending item
     pending_items = [item for item in triage_queue_store if item.get("status") == "pending"]
@@ -414,32 +471,9 @@ async def get_next_triage_item():
         logger.info(f"Returning next item: {next_item['doc_id']}/{next_item['sent_id']}")
         return {"item": next_item}
     
-    # Fallback to demo item if no pending items
-    logger.info("No pending items in storage, returning demo item")
-    return {
-        "item": {
-            "id": 1,
-            "item_id": 1,
-            "doc_id": "demo_001",
-            "sent_id": "s1",
-            "text": "White Spot Syndrome Virus (WSSV) causes significant mortality in shrimp farming.",
-            "candidates": {
-                "entities": [
-                    {"text": "White Spot Syndrome Virus", "label": "PATHOGEN", "start": 0, "end": 25},
-                    {"text": "WSSV", "label": "PATHOGEN", "start": 27, "end": 31},
-                    {"text": "shrimp", "label": "SPECIES", "start": 60, "end": 66}
-                ],
-                "relations": [
-                    {"source": "WSSV", "target": "shrimp", "type": "infects"}
-                ],
-                "topics": ["T_DISEASE"]
-            },
-            "priority_score": 0.95,
-            "priority_level": "high",
-            "status": "pending",
-            "created_at": datetime.now().isoformat()
-        }
-    }
+    # No pending items at all
+    logger.info("No pending items available")
+    return {"item": None}
 
 @app.post("/api/annotations/decide")
 async def submit_annotation(annotation_data: Dict):
