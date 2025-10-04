@@ -24,14 +24,14 @@ from services.rules.rule_based_annotator import ShimpAquacultureRuleEngine
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-async def populate_triage_queue():
+async def populate_triage_queue(chunking_mode: str = "sentence"):
     """Process all uploaded documents and populate triage queue"""
     
-    logger.info("🚀 Starting triage queue population...")
+    logger.info(f"🚀 Starting triage queue population (chunking_mode: {chunking_mode})...")
     
     # Initialize services
     logger.info("Initializing services...")
-    ingestion_service = DocumentIngestionService()
+    ingestion_service = DocumentIngestionService(chunking_mode=chunking_mode)
     
     # Initialize rule engine (always available)
     rule_engine = ShimpAquacultureRuleEngine()
@@ -87,16 +87,29 @@ async def populate_triage_queue():
                 title=doc_file.stem
             )
             
-            logger.info(f"  Document has {len(document.sentences)} sentences")
+            # Get chunks based on chunking mode
+            chunks = document.chunks if hasattr(document, 'chunks') else document.sentences
+            chunk_type = getattr(document, 'chunk_type', 'sentence')
             
-            # Process each sentence
-            for i, sentence in enumerate(document.sentences):
-                sentence_data = {
-                    "doc_id": document.doc_id,
-                    "sent_id": sentence.sent_id,
-                    "text": sentence.text,
-                    "title": document.title
-                }
+            logger.info(f"  Document has {len(chunks)} {chunk_type}s")
+            
+            # Process each chunk (sentence or paragraph)
+            for i, chunk in enumerate(chunks):
+                # Handle both sentence and paragraph chunks
+                if hasattr(chunk, 'sent_id'):  # Sentence
+                    chunk_data = {
+                        "doc_id": document.doc_id,
+                        "sent_id": chunk.sent_id,
+                        "text": chunk.text,
+                        "title": document.title
+                    }
+                else:  # Paragraph
+                    chunk_data = {
+                        "doc_id": document.doc_id,
+                        "sent_id": chunk.para_id,  # Use para_id as sent_id for compatibility
+                        "text": chunk.text,
+                        "title": document.title
+                    }
                 
                 try:
                     # Generate LLM candidates if available
@@ -104,20 +117,20 @@ async def populate_triage_queue():
                     if llm_generator:
                         try:
                             llm_result = await llm_generator.process_sentence(
-                                sentence_data["doc_id"],
-                                sentence_data["sent_id"], 
-                                sentence_data["text"],
-                                sentence_data["title"]
+                                chunk_data["doc_id"],
+                                chunk_data["sent_id"], 
+                                chunk_data["text"],
+                                chunk_data["title"]
                             )
                             llm_candidates = llm_result["candidates"]
                         except Exception as e:
-                            logger.warning(f"LLM processing failed for sentence {sentence.sent_id}: {e}")
+                            logger.warning(f"LLM processing failed for {chunk_type} {chunk_data['sent_id']}: {e}")
                     
                     # Generate rule-based candidates
                     rule_result = rule_engine.process_sentence(
-                        sentence_data["doc_id"],
-                        sentence_data["sent_id"],
-                        sentence_data["text"]
+                        chunk_data["doc_id"],
+                        chunk_data["sent_id"],
+                        chunk_data["text"]
                     )
                     
                     # Only add to triage if we have interesting content
@@ -129,12 +142,13 @@ async def populate_triage_queue():
                         has_entities = bool(rule_result["rule_results"].get("entities", []))
                     
                     # Add to triage queue (even if no entities, for demonstration)
-                    if True:  # Change to `if has_entities:` to only queue sentences with entities
+                    if True:  # Change to `if has_entities:` to only queue chunks with entities
                         doc_metadata = {
-                            "doc_id": sentence_data["doc_id"],
-                            "sent_id": sentence_data["sent_id"],
+                            "doc_id": chunk_data["doc_id"],
+                            "sent_id": chunk_data["sent_id"],  # Keep as sent_id for API compatibility
                             "title": document.title,
-                            "source": "uploaded"
+                            "source": "uploaded",
+                            "chunk_type": chunk_type
                         }
                         
                         # Combine candidates
@@ -147,8 +161,8 @@ async def populate_triage_queue():
                                 rule_result["rule_results"].get("entities", [])
                             )
                         
-                        # Add sentence text to candidates
-                        combined_candidates["text"] = sentence_data["text"]
+                        # Add chunk text to candidates
+                        combined_candidates["text"] = chunk_data["text"]
                         
                         triage_engine.add_candidates(
                             combined_candidates,
@@ -162,11 +176,11 @@ async def populate_triage_queue():
                             logger.info(f"  Generated {total_candidates_generated} candidates so far...")
                 
                 except Exception as e:
-                    logger.error(f"Failed to process sentence {sentence.sent_id}: {e}")
+                    logger.error(f"Failed to process {chunk_type} {chunk_data.get('sent_id', 'unknown')}: {e}")
                     continue
                 
                 # Limit processing for demo (remove this for full processing)
-                if total_candidates_generated >= 50:  # Process first 50 sentences for demo
+                if total_candidates_generated >= 50:  # Process first 50 chunks for demo
                     logger.info("Demo limit reached (50 candidates). Remove this limit for full processing.")
                     break
             
@@ -186,4 +200,13 @@ async def populate_triage_queue():
     return triage_engine
 
 if __name__ == "__main__":
-    asyncio.run(populate_triage_queue())
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Populate triage queue with document candidates")
+    parser.add_argument("--chunking-mode", default="sentence", 
+                       choices=["sentence", "paragraph"],
+                       help="Text chunking mode (default: sentence)")
+    
+    args = parser.parse_args()
+    
+    asyncio.run(populate_triage_queue(chunking_mode=args.chunking_mode))
