@@ -136,6 +136,7 @@ async def ingest_document(doc_request: DocumentRequest):
         "raw_text": doc_request.text,
         "sentence_count": len(sentences),
         "metadata": doc_request.metadata,
+        "status": "pending",
         "created_at": datetime.now().isoformat()
     }
     
@@ -237,7 +238,8 @@ async def get_documents(limit: int = 50, offset: int = 0, search: Optional[str] 
                 "title": "Shrimp Disease Management Guidelines",
                 "source": "manual",
                 "created_at": "2024-01-15T10:00:00Z",
-                "sentence_count": 45
+                "sentence_count": 45,
+                "status": "pending"
             },
             {
                 "id": 2,
@@ -245,7 +247,8 @@ async def get_documents(limit: int = 50, offset: int = 0, search: Optional[str] 
                 "title": "WSSV Prevention Strategies",
                 "source": "upload",
                 "created_at": "2024-01-14T15:30:00Z",
-                "sentence_count": 32
+                "sentence_count": 32,
+                "status": "pending"
             },
             {
                 "id": 3,
@@ -253,7 +256,8 @@ async def get_documents(limit: int = 50, offset: int = 0, search: Optional[str] 
                 "title": "Aquaculture Best Practices",
                 "source": "manual",
                 "created_at": "2024-01-13T09:15:00Z",
-                "sentence_count": 68
+                "sentence_count": 68,
+                "status": "pending"
             }
         ]
         all_documents = demo_documents
@@ -264,6 +268,25 @@ async def get_documents(limit: int = 50, offset: int = 0, search: Optional[str] 
             doc for doc in all_documents 
             if search.lower() in doc["title"].lower() or search.lower() in doc["doc_id"].lower()
         ]
+    
+    # Add processing statistics to each document
+    for doc in all_documents:
+        doc_id = doc.get("doc_id")
+        if doc_id:
+            # Count triage items and annotations for this document
+            doc_triage_items = [item for item in triage_queue_store if item.get("doc_id") == doc_id]
+            doc_annotations = [anno for anno in annotations_store if str(anno.get("item_id", "")).startswith(str(doc_id))]
+            
+            total_sentences = doc.get("sentence_count", 0)
+            completed_sentences = len([item for item in doc_triage_items if item.get("status") == "completed"])
+            progress_percentage = round(completed_sentences / total_sentences * 100, 1) if total_sentences > 0 else 0
+            
+            doc["progress"] = {
+                "total_sentences": total_sentences,
+                "completed_sentences": completed_sentences,
+                "progress_percentage": progress_percentage,
+                "remaining_sentences": total_sentences - completed_sentences
+            }
     
     # Sort by created_at (newest first)
     all_documents.sort(key=lambda x: x.get("created_at", ""), reverse=True)
@@ -458,6 +481,34 @@ async def submit_annotation(annotation_data: Dict):
     }
     annotations_store.append(annotation)
     
+    # Check if document is fully completed
+    if current_item:
+        doc_id = current_item.get("doc_id")
+        if doc_id:
+            # Count total items and completed items for this document
+            doc_items = [item for item in triage_queue_store if item.get("doc_id") == doc_id]
+            completed_items = [item for item in doc_items if item.get("status") == "completed"]
+            
+            logger.info(f"Document {doc_id} progress: {len(completed_items)}/{len(doc_items)} items completed")
+            
+            # If all items are completed, mark document as processed and remove from queue
+            if len(completed_items) == len(doc_items):
+                logger.info(f"Document {doc_id} fully completed! Removing from queue and marking as processed")
+                
+                # Remove all triage items for this document
+                global triage_queue_store
+                triage_queue_store = [item for item in triage_queue_store if item.get("doc_id") != doc_id]
+                
+                # Mark document as processed
+                for doc in documents_store:
+                    if doc.get("doc_id") == doc_id:
+                        doc["status"] = "processed"
+                        doc["completed_at"] = datetime.now().isoformat()
+                        doc["total_annotations"] = len(completed_items)
+                        break
+                
+                logger.info(f"Document {doc_id} processing complete: {len(completed_items)} annotations saved, removed from queue")
+    
     # Find next pending item
     next_item = None
     pending_items = [item for item in triage_queue_store if item.get("status") == "pending"]
@@ -541,6 +592,66 @@ async def clear_document_triage_items(doc_id: str):
         "status": "success",
         "message": f"Triage items for document {doc_id} cleared",
         "items_deleted": items_deleted
+    }
+
+@app.get("/api/documents/completed")
+async def get_completed_documents():
+    """Get list of completed/processed documents"""
+    completed_docs = [doc for doc in documents_store if doc.get("status") == "processed"]
+    
+    # Calculate statistics for each completed document
+    for doc in completed_docs:
+        doc_id = doc.get("doc_id")
+        doc_annotations = [anno for anno in annotations_store if anno.get("item_id", "").startswith(doc_id)]
+        
+        # Count decision types
+        accepted = len([anno for anno in doc_annotations if anno.get("decision") == "accept"])
+        rejected = len([anno for anno in doc_annotations if anno.get("decision") == "reject"])
+        skipped = len([anno for anno in doc_annotations if anno.get("decision") == "skip"])
+        
+        doc["annotation_stats"] = {
+            "total_annotations": len(doc_annotations),
+            "accepted": accepted,
+            "rejected": rejected,
+            "skipped": skipped,
+            "acceptance_rate": round(accepted / len(doc_annotations) * 100, 1) if doc_annotations else 0
+        }
+    
+    logger.info(f"Returning {len(completed_docs)} completed documents")
+    
+    return {
+        "documents": completed_docs,
+        "total": len(completed_docs)
+    }
+
+@app.get("/api/statistics/documents")
+async def get_document_statistics():
+    """Get document processing statistics"""
+    total_docs = len(documents_store)
+    processed_docs = len([doc for doc in documents_store if doc.get("status") == "processed"])
+    pending_docs = total_docs - processed_docs
+    
+    total_annotations = len(annotations_store)
+    accepted_annotations = len([anno for anno in annotations_store if anno.get("decision") == "accept"])
+    rejected_annotations = len([anno for anno in annotations_store if anno.get("decision") == "reject"])
+    
+    return {
+        "documents": {
+            "total": total_docs,
+            "processed": processed_docs,
+            "pending": pending_docs,
+            "completion_rate": round(processed_docs / total_docs * 100, 1) if total_docs > 0 else 0
+        },
+        "annotations": {
+            "total": total_annotations,
+            "accepted": accepted_annotations,
+            "rejected": rejected_annotations,
+            "acceptance_rate": round(accepted_annotations / total_annotations * 100, 1) if total_annotations > 0 else 0
+        },
+        "queue": {
+            "pending_items": len([item for item in triage_queue_store if item.get("status") == "pending"]),
+            "total_items": len(triage_queue_store)
+        }
     }
 
 @app.post("/api/reset-all")
