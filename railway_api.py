@@ -429,6 +429,93 @@ async def submit_annotation(annotation_data: Dict):
         "timestamp": datetime.now().isoformat()
     }
 
+@app.delete("/api/documents/{doc_id}")
+async def delete_document(doc_id: str):
+    """Delete a document and all its associated triage items"""
+    global documents_store, triage_queue_store
+    
+    logger.info(f"Delete requested for document: {doc_id}")
+    
+    # Find and remove the document
+    initial_doc_count = len(documents_store)
+    documents_store = [doc for doc in documents_store if doc.get("doc_id") != doc_id]
+    docs_deleted = initial_doc_count - len(documents_store)
+    
+    # Remove all associated triage items
+    initial_triage_count = len(triage_queue_store)
+    triage_queue_store = [item for item in triage_queue_store if item.get("doc_id") != doc_id]
+    items_deleted = initial_triage_count - len(triage_queue_store)
+    
+    logger.info(f"Deleted document {doc_id}: {docs_deleted} document(s), {items_deleted} triage item(s) removed")
+    
+    if docs_deleted > 0:
+        return {
+            "status": "success",
+            "message": f"Document {doc_id} deleted successfully",
+            "documents_deleted": docs_deleted,
+            "triage_items_deleted": items_deleted
+        }
+    else:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id} not found")
+
+@app.delete("/api/triage/clear")
+async def clear_triage_queue():
+    """Clear all items from the triage queue"""
+    global triage_queue_store
+    
+    items_count = len(triage_queue_store)
+    triage_queue_store = []
+    
+    logger.info(f"Cleared triage queue: {items_count} items removed")
+    
+    return {
+        "status": "success",
+        "message": f"Triage queue cleared successfully",
+        "items_deleted": items_count
+    }
+
+@app.delete("/api/triage/document/{doc_id}")
+async def clear_document_triage_items(doc_id: str):
+    """Clear triage items for a specific document"""
+    global triage_queue_store
+    
+    initial_count = len(triage_queue_store)
+    triage_queue_store = [item for item in triage_queue_store if item.get("doc_id") != doc_id]
+    items_deleted = initial_count - len(triage_queue_store)
+    
+    logger.info(f"Cleared triage items for document {doc_id}: {items_deleted} items removed")
+    
+    return {
+        "status": "success",
+        "message": f"Triage items for document {doc_id} cleared",
+        "items_deleted": items_deleted
+    }
+
+@app.post("/api/reset-all")
+async def reset_all_data():
+    """Reset all data stores (useful for starting fresh)"""
+    global documents_store, triage_queue_store, annotations_store
+    
+    doc_count = len(documents_store)
+    triage_count = len(triage_queue_store)
+    anno_count = len(annotations_store)
+    
+    documents_store = []
+    triage_queue_store = []
+    annotations_store = []
+    
+    logger.info(f"Reset all data stores: {doc_count} docs, {triage_count} triage items, {anno_count} annotations")
+    
+    return {
+        "status": "success",
+        "message": "All data stores reset successfully",
+        "deleted": {
+            "documents": doc_count,
+            "triage_items": triage_count,
+            "annotations": anno_count
+        }
+    }
+
 # Catch-all route MUST be last to serve React frontend for client-side routing
 @app.get("/{full_path:path}")
 async def serve_frontend_routes(full_path: str):
