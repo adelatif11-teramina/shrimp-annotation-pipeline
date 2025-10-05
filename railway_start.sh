@@ -20,34 +20,38 @@ fi
 # Start the application (try full version first, fallback to minimal)
 echo "Starting shrimp annotation pipeline on port $PORT"
 
-# Build React frontend if needed
+# Build React frontend
+echo "🔨 Building React frontend..."
 if [ -d "ui" ] && [ -f "ui/package.json" ]; then
-    echo "Building React frontend..."
     cd ui
     
-    # Install dependencies if needed
-    if [ ! -d "node_modules" ]; then
-        echo "Installing frontend dependencies..."
-        npm install --production --silent
-    fi
+    # Install dependencies
+    echo "📦 Installing frontend dependencies..."
+    npm install --silent
     
-    # Build if not exists or if in production
-    if [ ! -d "build" ] || [ "$RAILWAY_ENVIRONMENT" = "production" ]; then
-        echo "Building React app..."
-        npm run build
-    fi
+    # Build the frontend
+    echo "🏗️ Building React app..."
+    npm run build
     
     cd ..
     
-    if [ -d "ui/build" ]; then
+    # Verify build
+    if [ -d "ui/build" ] && [ -f "ui/build/index.html" ]; then
         echo "✅ React frontend built successfully"
-        echo "Frontend files:"
-        ls -la ui/build/ | head -5
+        echo "📁 Frontend files:"
+        ls -la ui/build/ | head -10
+        echo "📄 Index.html size: $(wc -c < ui/build/index.html) bytes"
     else
-        echo "❌ React frontend build failed"
+        echo "❌ React frontend build failed or incomplete"
+        echo "📁 UI directory contents:"
+        ls -la ui/ || echo "No ui directory"
+        echo "📁 Build directory contents:"
+        ls -la ui/build/ 2>/dev/null || echo "No build directory"
     fi
 else
     echo "⚠️ No React frontend source found"
+    echo "📁 Root directory contents:"
+    ls -la | grep -E "(ui|package)"
 fi
 
 # Try PostgreSQL production API first if DATABASE_URL is set

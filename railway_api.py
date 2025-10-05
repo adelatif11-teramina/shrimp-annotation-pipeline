@@ -104,14 +104,16 @@ async def root():
     if ui_build_path.exists():
         index_file = ui_build_path / "index.html"
         if index_file.exists():
-            return FileResponse(str(index_file))
+            return FileResponse(str(index_file), media_type="text/html")
     
     # Fallback to API info
     return {
         "message": "🦐 Shrimp Annotation Pipeline API",
         "version": "1.0.0", 
         "status": "running",
-        "frontend": "not_built" if not ui_build_path.exists() else "available",
+        "frontend": "not_built" if not ui_build_path.exists() else "index_missing",
+        "frontend_path": str(ui_build_path),
+        "index_exists": (ui_build_path / "index.html").exists() if ui_build_path.exists() else False,
         "endpoints": {
             "health": "/health",
             "api_docs": "/docs",
@@ -1254,11 +1256,15 @@ async def restart_demo():
 @app.get("/{full_path:path}")
 async def serve_frontend_routes(full_path: str):
     """Serve React frontend for all non-API routes"""
+    # Don't serve frontend for API routes
+    if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("health"):
+        raise HTTPException(status_code=404, detail="API endpoint not found")
+    
     # Try to serve React frontend
     if ui_build_path.exists():
         index_file = ui_build_path / "index.html"
         if index_file.exists():
-            return FileResponse(str(index_file))
+            return FileResponse(str(index_file), media_type="text/html")
     
     # Fallback
     raise HTTPException(status_code=404, detail="Frontend not available")
