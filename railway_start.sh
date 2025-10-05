@@ -28,12 +28,27 @@ else
     echo "No React frontend build found"
 fi
 
-# Try the full API first (it has better frontend serving)
-echo "Attempting to start full annotation API..."
-if python -c "import services.api.annotation_api" 2>/dev/null; then
-    echo "Starting full annotation API with frontend serving"
-    python -m uvicorn services.api.annotation_api:app --host 0.0.0.0 --port $PORT --workers 1
+# Try PostgreSQL production API first if DATABASE_URL is set
+if [ -n "$DATABASE_URL" ]; then
+    echo "DATABASE_URL detected, setting up PostgreSQL and starting production API..."
+    
+    # Setup database if needed
+    python scripts/setup_railway_database.py
+    
+    if [ $? -eq 0 ]; then
+        echo "Starting PostgreSQL production API with error recovery"
+        python -m uvicorn services.api.production_api:app --host 0.0.0.0 --port $PORT --workers 1
+    else
+        echo "PostgreSQL setup failed, falling back to in-memory API"
+        python -m uvicorn railway_api:app --host 0.0.0.0 --port $PORT --workers 1
+    fi
 else
-    echo "Full API failed, starting minimal Railway-compatible API"
-    python -m uvicorn railway_api:app --host 0.0.0.0 --port $PORT --workers 1
+    echo "No DATABASE_URL, trying full annotation API..."
+    if python -c "import services.api.annotation_api" 2>/dev/null; then
+        echo "Starting full annotation API with frontend serving"
+        python -m uvicorn services.api.annotation_api:app --host 0.0.0.0 --port $PORT --workers 1
+    else
+        echo "Full API failed, starting minimal Railway-compatible API"
+        python -m uvicorn railway_api:app --host 0.0.0.0 --port $PORT --workers 1
+    fi
 fi

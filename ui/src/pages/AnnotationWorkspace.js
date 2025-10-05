@@ -43,6 +43,8 @@ import TopicAnnotator from '../components/TopicAnnotator';
 import AnnotationHistory from '../components/AnnotationHistory';
 import { useAnnotationAPI } from '../hooks/useAnnotationAPI';
 import useWebSocket from '../hooks/useWebSocket';
+import useAutoSave from '../hooks/useAutoSave';
+import useNetworkRecovery from '../hooks/useNetworkRecovery';
 import {
   ConnectionStatus,
   CollaborationIndicator,
@@ -140,6 +142,7 @@ function AnnotationWorkspace() {
   const [showGuidelines, setShowGuidelines] = useState(false);
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const [showModifyDialog, setShowModifyDialog] = useState(false);
+  const [showDraftDialog, setShowDraftDialog] = useState(false);
   const [loading, setLoading] = useState(false);
   
   // Session analytics
@@ -150,6 +153,25 @@ function AnnotationWorkspace() {
     totalTimeSpent: 0,
     averageTimePerItem: 0
   });
+
+  // Error recovery and auto-save hooks
+  const {
+    isDrafted,
+    startAutoSave,
+    stopAutoSave,
+    loadDraft,
+    clearDraft,
+    updateData,
+    saveNow,
+    saveStatus
+  } = useAutoSave(currentItem?.id || currentItem?.item_id);
+
+  const {
+    connectionStatus,
+    callWithRecovery,
+    hasFailedOperations,
+    retryNow
+  } = useNetworkRecovery();
   const [currentItemStartTime, setCurrentItemStartTime] = useState(Date.now());
   
   // WebSocket connection for real-time collaboration
@@ -188,6 +210,64 @@ function AnnotationWorkspace() {
       loadNextItem();
     }
   }, [itemId]);
+
+  // Auto-save current annotation data
+  useEffect(() => {
+    if (currentItem) {
+      const currentData = {
+        entities,
+        relations,
+        topics,
+        notes,
+        confidence
+      };
+      updateData(currentData);
+    }
+  }, [entities, relations, topics, notes, confidence, currentItem, updateData]);
+
+  // Check for draft on item load
+  useEffect(() => {
+    if (currentItem && isDrafted) {
+      setShowDraftDialog(true);
+    }
+  }, [currentItem, isDrafted]);
+
+  // Start auto-save when annotation begins
+  useEffect(() => {
+    if (currentItem) {
+      const initialData = {
+        entities,
+        relations,
+        topics,
+        notes,
+        confidence
+      };
+      startAutoSave(initialData);
+      
+      return () => {
+        stopAutoSave();
+      };
+    }
+  }, [currentItem]);
+
+  // Handle draft restoration
+  const handleRestoreDraft = () => {
+    const draft = loadDraft();
+    if (draft) {
+      setEntities(draft.entities || []);
+      setRelations(draft.relations || []);
+      setTopics(draft.topics || []);
+      setNotes(draft.notes || '');
+      setConfidence(draft.confidence || 'high');
+      console.log('🔄 Restored draft data');
+    }
+    setShowDraftDialog(false);
+  };
+
+  const handleDiscardDraft = () => {
+    clearDraft();
+    setShowDraftDialog(false);
+  };
 
   const loadItem = async (id) => {
     setLoading(true);
@@ -365,8 +445,22 @@ function AnnotationWorkspace() {
     
     try {
       console.log('📝 Submitting accept annotation:', annotation);
-      const response = await submitAnnotation(annotation);
+      
+      // Use network recovery for critical operations
+      const response = await callWithRecovery('/api/annotations/decide', {
+        method: 'POST',
+        data: annotation
+      }, {
+        type: 'submit_annotation',
+        itemId: currentItem.id,
+        critical: true
+      });
+      
       updateSessionStats('completed');
+      
+      // Clear draft on successful submission
+      clearDraft();
+      stopAutoSave();
       
       // Move to next item if available
       if (response.next_item) {
@@ -382,6 +476,11 @@ function AnnotationWorkspace() {
       }
     } catch (error) {
       console.error('Failed to submit annotation:', error);
+      
+      if (error.queued) {
+        // Show user that operation was queued
+        console.log('📤 Annotation queued for retry due to network issue');
+      }
     }
   };
 
@@ -968,6 +1067,32 @@ function AnnotationWorkspace() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowKeyboardHelp(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Draft Restoration Dialog */}
+      <Dialog
+        open={showDraftDialog}
+        onClose={() => setShowDraftDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Draft Found</DialogTitle>
+        <DialogContent>
+          <Typography gutterBottom>
+            A previous draft was found for this annotation item. Would you like to restore your work?
+          </Typography>
+          <Alert severity="info" sx={{ mt: 2 }}>
+            This will restore your previously saved entities, relations, topics, and notes.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDiscardDraft} color="error">
+            Discard Draft
+          </Button>
+          <Button onClick={handleRestoreDraft} variant="contained">
+            Restore Draft
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
