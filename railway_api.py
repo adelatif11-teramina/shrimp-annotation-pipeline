@@ -142,49 +142,103 @@ async def ingest_document(doc_request: DocumentRequest):
     """Ingest a document for annotation (store in memory and create triage items)"""
     logger.info(f"Document ingestion requested: {doc_request.doc_id}")
     
-    # Calculate sentence count (simple split by period)
-    sentences = [s.strip() for s in doc_request.text.split('.') if s.strip()]
+    # Use paragraph-level chunking instead of simple sentence splitting
+    paragraphs = []
+    current_start = 0
     
-    # Create document object
+    # Split by double newlines (paragraph breaks)
+    para_texts = doc_request.text.split('\n\n')
+    para_id = 0
+    
+    for para_text in para_texts:
+        para_text = para_text.strip()
+        if para_text:
+            para_end = current_start + len(para_text)
+            paragraphs.append({
+                "para_id": f"p_{para_id}",
+                "start": current_start,
+                "end": para_end,
+                "text": para_text,
+                "sentence_count": len([s for s in para_text.split('.') if s.strip()])
+            })
+            current_start = para_end + 2  # Account for paragraph break
+            para_id += 1
+    
+    # If no paragraph breaks found, treat whole text as one paragraph
+    if not paragraphs:
+        paragraphs = [{
+            "para_id": "p_0",
+            "start": 0,
+            "end": len(doc_request.text),
+            "text": doc_request.text.strip(),
+            "sentence_count": len([s for s in doc_request.text.split('.') if s.strip()])
+        }]
+    
+    # Use paragraphs as chunks for annotation
+    chunks = paragraphs
+    
+    # Create document object with paragraph-level chunking
     document = {
         "id": len(documents_store) + 1,
         "doc_id": doc_request.doc_id,
         "title": doc_request.title or f"Document {doc_request.doc_id}",
         "source": doc_request.source,
         "raw_text": doc_request.text,
-        "sentence_count": len(sentences),
-        "metadata": doc_request.metadata,
-        "status": "pending",
+        "sentence_count": sum(p["sentence_count"] for p in paragraphs),
+        "paragraph_count": len(paragraphs),
+        "chunk_count": len(chunks),
+        "chunking_mode": "paragraph",
+        "metadata": {
+            **(doc_request.metadata or {}),
+            "avg_sentences_per_paragraph": round(sum(p["sentence_count"] for p in paragraphs) / len(paragraphs), 1) if paragraphs else 0,
+            "processing_mode": "paragraph_chunking"
+        },
+        "status": "processed",
         "created_at": datetime.now().isoformat()
     }
     
     # Store document in memory
     documents_store.append(document)
     
-    # Create triage queue items for each sentence
+    # Create triage queue items for each paragraph (not sentences)
     triage_items_created = 0
-    for i, sentence in enumerate(sentences):
-        if sentence.strip():  # Only process non-empty sentences
-            # Calculate priority score based on content
+    for i, paragraph in enumerate(paragraphs):
+        para_text = paragraph["text"]
+        if para_text.strip():  # Only process non-empty paragraphs
+            # Calculate priority score based on paragraph content
             priority_score = 0.5  # Default priority
-            if any(keyword in sentence.lower() for keyword in ['disease', 'virus', 'pathogen', 'mortality', 'infection']):
+            para_lower = para_text.lower()
+            
+            # Higher priority for disease/pathology content
+            if any(keyword in para_lower for keyword in ['disease', 'virus', 'pathogen', 'mortality', 'infection', 'ahpnd', 'wssv', 'vibrio']):
                 priority_score = 0.9
-            elif any(keyword in sentence.lower() for keyword in ['treatment', 'prevention', 'antibiotic', 'vaccine']):
+            elif any(keyword in para_lower for keyword in ['treatment', 'prevention', 'antibiotic', 'vaccine', 'probiotic', 'florfenicol']):
                 priority_score = 0.8
-            elif any(keyword in sentence.lower() for keyword in ['shrimp', 'aquaculture', 'farming', 'pond']):
+            elif any(keyword in para_lower for keyword in ['shrimp', 'aquaculture', 'farming', 'pond', 'penaeus', 'vannamei']):
                 priority_score = 0.7
+            elif any(keyword in para_lower for keyword in ['gene', 'genetic', 'marker', 'qtl', 'breeding', 'selection']):
+                priority_score = 0.75
+            
+            # Boost priority for paragraphs with multiple sentences (more context)
+            if paragraph["sentence_count"] >= 3:
+                priority_score = min(0.95, priority_score + 0.1)
             
             triage_item = {
                 "id": len(triage_queue_store) + 1,
                 "item_id": len(triage_queue_store) + 1,
                 "doc_id": doc_request.doc_id,
-                "sent_id": f"s{i+1}",
-                "sentence_id": i + 1,
-                "text": sentence,
+                "sent_id": paragraph['para_id'],  # Using para_id for compatibility
+                "chunk_id": paragraph['para_id'],
+                "paragraph_id": i + 1,
+                "text": para_text,
                 "priority_score": priority_score,
                 "priority_level": "high" if priority_score > 0.8 else "medium" if priority_score > 0.6 else "low",
                 "status": "pending",
                 "created_at": datetime.now().isoformat(),
+                "chunking_mode": "paragraph",
+                "sentence_count": paragraph["sentence_count"],
+                "char_start": paragraph["start"],
+                "char_end": paragraph["end"],
                 "candidates": {
                     "entities": [],
                     "relations": [],
@@ -203,10 +257,12 @@ async def ingest_document(doc_request: DocumentRequest):
         "doc_id": doc_request.doc_id,
         "title": document["title"],
         "source": doc_request.source,
-        "sentence_count": len(sentences),
-        "sentences": len(sentences),
+        "sentence_count": document["sentence_count"],
+        "paragraph_count": document["paragraph_count"],
+        "chunk_count": document["chunk_count"],
+        "chunking_mode": "paragraph",
         "triage_items_created": triage_items_created,
-        "message": f"Document ingested with {triage_items_created} sentences added to triage queue",
+        "message": f"Document ingested with {triage_items_created} paragraphs added to triage queue (paragraph-level chunking)",
         "status": "processed",
         "created_at": document["created_at"]
     }
@@ -347,45 +403,68 @@ async def get_triage_queue(
     
     # If no items in storage at all, create demo items (one time only)
     if len(triage_queue_store) == 0:
-        logger.info("No triage items in storage, creating persistent demo items")
+        logger.info("No triage items in storage, creating demo paragraph-based items")
         demo_items = [
             {
                 "id": 1,
                 "item_id": 1,
                 "doc_id": "demo_001",
-                "sent_id": "s1",
-                "text": "White Spot Syndrome Virus (WSSV) causes significant mortality in shrimp farming.",
+                "sent_id": "p_0",
+                "chunk_id": "p_0", 
+                "paragraph_id": 1,
+                "text": "White Spot Syndrome Virus (WSSV) is one of the most devastating pathogens affecting Pacific white shrimp (Penaeus vannamei) aquaculture worldwide. The virus causes acute hepatopancreatic necrosis disease (AHPND) and can result in mortality rates exceeding 80% in affected populations. Early detection through PCR screening and implementation of biosecurity measures are critical for disease management.",
                 "priority_score": 0.95,
                 "priority_level": "high",
                 "status": "pending",
                 "created_at": datetime.now().isoformat(),
+                "chunking_mode": "paragraph",
+                "sentence_count": 3,
+                "char_start": 0,
+                "char_end": 357,
                 "candidates": {
                     "entities": [
                         {"text": "White Spot Syndrome Virus", "label": "PATHOGEN", "start": 0, "end": 25},
                         {"text": "WSSV", "label": "PATHOGEN", "start": 27, "end": 31},
-                        {"text": "shrimp", "label": "SPECIES", "start": 60, "end": 66}
+                        {"text": "Pacific white shrimp", "label": "SPECIES", "start": 87, "end": 107},
+                        {"text": "Penaeus vannamei", "label": "SPECIES", "start": 109, "end": 125},
+                        {"text": "acute hepatopancreatic necrosis disease", "label": "DISEASE", "start": 178, "end": 218},
+                        {"text": "AHPND", "label": "DISEASE", "start": 220, "end": 225},
+                        {"text": "PCR", "label": "TEST_TYPE", "start": 297, "end": 300}
                     ],
-                    "relations": [],
-                    "topics": ["T_DISEASE"]
+                    "relations": [
+                        {"head": "WSSV", "relation": "causes", "tail": "AHPND"}
+                    ],
+                    "topics": ["T_DISEASE", "T_DIAGNOSIS"]
                 }
             },
             {
                 "id": 2,
                 "item_id": 2,
                 "doc_id": "demo_002",
-                "sent_id": "s1",
-                "text": "Probiotics can improve water quality in shrimp ponds.",
-                "priority_score": 0.82,
+                "sent_id": "p_0",
+                "chunk_id": "p_0",
+                "paragraph_id": 1,
+                "text": "Treatment with florfenicol at 10 mg/kg body weight significantly improved survival rates in juvenile Penaeus vannamei infected with Vibrio parahaemolyticus. The antibiotic should be administered through medicated feed for 7-10 days. Water temperature should be maintained at 28-30°C during treatment to optimize drug efficacy and minimize stress on the animals.",
+                "priority_score": 0.88,
                 "priority_level": "high",
                 "status": "pending",
                 "created_at": datetime.now().isoformat(),
+                "chunking_mode": "paragraph",
+                "sentence_count": 3,
+                "char_start": 0,
+                "char_end": 367,
                 "candidates": {
                     "entities": [
-                        {"text": "Probiotics", "label": "CHEMICAL", "start": 0, "end": 10},
-                        {"text": "shrimp", "label": "SPECIES", "start": 42, "end": 48}
+                        {"text": "florfenicol", "label": "TREATMENT", "start": 15, "end": 26},
+                        {"text": "10 mg/kg", "label": "MEASUREMENT", "start": 30, "end": 38},
+                        {"text": "Penaeus vannamei", "label": "SPECIES", "start": 102, "end": 118},
+                        {"text": "Vibrio parahaemolyticus", "label": "PATHOGEN", "start": 133, "end": 156},
+                        {"text": "28-30°C", "label": "MEASUREMENT", "start": 280, "end": 287}
                     ],
-                    "relations": [],
-                    "topics": ["T_TREATMENT"]
+                    "relations": [
+                        {"head": "florfenicol", "relation": "treats", "tail": "Vibrio parahaemolyticus"}
+                    ],
+                    "topics": ["T_TREATMENT", "T_DISEASE"]
                 }
             }
         ]
@@ -435,7 +514,9 @@ async def get_next_triage_item():
                 "id": 1,
                 "item_id": 1,
                 "doc_id": "demo_001",
-                "sent_id": "s1",
+                "sent_id": "p_0",
+                "chunk_id": "p_0",
+                "paragraph_id": 1,
                 "text": "White Spot Syndrome Virus (WSSV) causes significant mortality in shrimp farming.",
                 "priority_score": 0.95,
                 "priority_level": "high",
@@ -457,19 +538,30 @@ async def get_next_triage_item():
                 "id": 2,
                 "item_id": 2,
                 "doc_id": "demo_002",
-                "sent_id": "s1",
-                "text": "Probiotics can improve water quality in shrimp ponds.",
-                "priority_score": 0.82,
+                "sent_id": "p_0",
+                "chunk_id": "p_0",
+                "paragraph_id": 1,
+                "text": "Treatment with florfenicol at 10 mg/kg body weight significantly improved survival rates in juvenile Penaeus vannamei infected with Vibrio parahaemolyticus. The antibiotic should be administered through medicated feed for 7-10 days. Water temperature should be maintained at 28-30°C during treatment to optimize drug efficacy and minimize stress on the animals.",
+                "priority_score": 0.88,
                 "priority_level": "high",
                 "status": "pending",
                 "created_at": datetime.now().isoformat(),
+                "chunking_mode": "paragraph",
+                "sentence_count": 3,
+                "char_start": 0,
+                "char_end": 367,
                 "candidates": {
                     "entities": [
-                        {"text": "Probiotics", "label": "CHEMICAL", "start": 0, "end": 10},
-                        {"text": "shrimp", "label": "SPECIES", "start": 42, "end": 48}
+                        {"text": "florfenicol", "label": "TREATMENT", "start": 15, "end": 26},
+                        {"text": "10 mg/kg", "label": "MEASUREMENT", "start": 30, "end": 38},
+                        {"text": "Penaeus vannamei", "label": "SPECIES", "start": 102, "end": 118},
+                        {"text": "Vibrio parahaemolyticus", "label": "PATHOGEN", "start": 133, "end": 156},
+                        {"text": "28-30°C", "label": "MEASUREMENT", "start": 280, "end": 287}
                     ],
-                    "relations": [],
-                    "topics": ["T_TREATMENT"]
+                    "relations": [
+                        {"head": "florfenicol", "relation": "treats", "tail": "Vibrio parahaemolyticus"}
+                    ],
+                    "topics": ["T_TREATMENT", "T_DISEASE"]
                 }
             }
         ]
