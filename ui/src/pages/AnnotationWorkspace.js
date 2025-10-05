@@ -177,7 +177,7 @@ function AnnotationWorkspace() {
   // WebSocket connection for real-time collaboration
   const {
     isConnected,
-    connectionStatus,
+    connectionStatus: wsConnectionStatus,
     connectedUsers,
     activeAssignments,
     systemAlerts,
