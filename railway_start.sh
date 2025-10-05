@@ -20,12 +20,34 @@ fi
 # Start the application (try full version first, fallback to minimal)
 echo "Starting shrimp annotation pipeline on port $PORT"
 
-# Check if React frontend was built
-if [ -d "ui/build" ]; then
-    echo "React frontend found at ui/build"
-    ls -la ui/build/ | head -5
+# Build React frontend if needed
+if [ -d "ui" ] && [ -f "ui/package.json" ]; then
+    echo "Building React frontend..."
+    cd ui
+    
+    # Install dependencies if needed
+    if [ ! -d "node_modules" ]; then
+        echo "Installing frontend dependencies..."
+        npm install --production --silent
+    fi
+    
+    # Build if not exists or if in production
+    if [ ! -d "build" ] || [ "$RAILWAY_ENVIRONMENT" = "production" ]; then
+        echo "Building React app..."
+        npm run build
+    fi
+    
+    cd ..
+    
+    if [ -d "ui/build" ]; then
+        echo "✅ React frontend built successfully"
+        echo "Frontend files:"
+        ls -la ui/build/ | head -5
+    else
+        echo "❌ React frontend build failed"
+    fi
 else
-    echo "No React frontend build found"
+    echo "⚠️ No React frontend source found"
 fi
 
 # Try PostgreSQL production API first if DATABASE_URL is set
@@ -36,19 +58,14 @@ if [ -n "$DATABASE_URL" ]; then
     python scripts/setup_railway_database.py
     
     if [ $? -eq 0 ]; then
-        echo "Starting PostgreSQL production API with error recovery"
-        python -m uvicorn services.api.production_api:app --host 0.0.0.0 --port $PORT --workers 1
+        echo "✅ Database setup successful, starting PostgreSQL production API"
+        exec python -m uvicorn services.api.production_api:app --host 0.0.0.0 --port $PORT --workers 1
     else
-        echo "PostgreSQL setup failed, falling back to in-memory API"
-        python -m uvicorn railway_api:app --host 0.0.0.0 --port $PORT --workers 1
+        echo "❌ PostgreSQL setup failed, falling back to in-memory API"
+        exec python -m uvicorn railway_api:app --host 0.0.0.0 --port $PORT --workers 1
     fi
 else
-    echo "No DATABASE_URL, trying full annotation API..."
-    if python -c "import services.api.annotation_api" 2>/dev/null; then
-        echo "Starting full annotation API with frontend serving"
-        python -m uvicorn services.api.annotation_api:app --host 0.0.0.0 --port $PORT --workers 1
-    else
-        echo "Full API failed, starting minimal Railway-compatible API"
-        python -m uvicorn railway_api:app --host 0.0.0.0 --port $PORT --workers 1
-    fi
+    echo "ℹ️ No DATABASE_URL found, starting Railway-compatible API"
+    echo "To use PostgreSQL, add a PostgreSQL service and set DATABASE_URL"
+    exec python -m uvicorn railway_api:app --host 0.0.0.0 --port $PORT --workers 1
 fi

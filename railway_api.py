@@ -46,8 +46,13 @@ app.add_middleware(
 ui_build_path = Path(__file__).parent / "ui" / "build"
 if ui_build_path.exists():
     logger.info(f"Serving React frontend from: {ui_build_path}")
-    # Serve static files
-    app.mount("/static", StaticFiles(directory=str(ui_build_path / "static")), name="static")
+    # Serve static files only if directory exists
+    static_path = ui_build_path / "static"
+    if static_path.exists():
+        app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+        logger.info("Static files mounted successfully")
+    else:
+        logger.warning(f"Static directory not found: {static_path}")
 else:
     logger.warning("React frontend build not found, serving API only")
 
@@ -71,10 +76,20 @@ class CandidateResponse(BaseModel):
     candidates: Dict[str, Any]
     processing_time: float
 
-# Health check endpoint
+# Health check endpoints for Railway
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint for Railway"""
+    return HealthResponse(
+        status="healthy",
+        timestamp=datetime.now().isoformat(),
+        version="1.0.0",
+        message="Shrimp Annotation Pipeline API is running on Railway"
+    )
+
+@app.get("/api/health", response_model=HealthResponse)
+async def api_health_check():
+    """API health check endpoint for Railway"""
     return HealthResponse(
         status="healthy",
         timestamp=datetime.now().isoformat(),

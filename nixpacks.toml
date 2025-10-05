@@ -2,12 +2,11 @@
 
 [phases.build]
 cmds = [
-    "pip install -r requirements.txt",
-    "cd ui && npm install && npm run build"
+    "pip install -r requirements.txt"
 ]
 
 [phases.start]
-cmd = "python scripts/start_server.py"
+cmd = "./railway_start.sh"
 
 [variables]
 NODE_VERSION = "18"
