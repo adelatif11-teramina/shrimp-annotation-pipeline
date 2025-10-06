@@ -61,7 +61,8 @@ const ENTITY_TYPES = {
   CLINICAL_SYMPTOM: { color: '#FF4444', description: 'Observed abnormalities (white feces, lethargy)' },
   PHENOTYPIC_TRAIT: { color: '#E91E63', description: 'Measurable performance (survival rate, growth rate)' },
   GENE: { color: '#9B59B6', description: 'Genetic markers (PvIGF, hemocyanin, TLR)' },
-  TREATMENT: { color: '#6BCF7F', description: 'Medications, probiotics, interventions' },
+  CHEMICAL_COMPOUND: { color: '#FF9800', description: 'Chemical substances (florfenicol, vitamin C, lime)' },
+  TREATMENT: { color: '#6BCF7F', description: 'Treatment protocols (antibiotic therapy, vaccination)' },
   LIFE_STAGE: { color: '#00BCD4', description: 'Development stages (PL15, juvenile, broodstock)' },
   
   // Reified entities
@@ -96,13 +97,13 @@ const RELATION_TYPES = [
   // Core biological relations (v2.0)
   'infected_by',           // SPECIES → PATHOGEN
   'causes',                // [PATHOGEN|ENVIRONMENTAL_PARAM] → [DISEASE|CLINICAL_SYMPTOM] 
-  'treated_with',          // [DISEASE|CLINICAL_SYMPTOM] → TREATMENT
+  'treated_with',          // [DISEASE|CLINICAL_SYMPTOM] → [TREATMENT|CHEMICAL_COMPOUND]
   'confers_resistance_to', // GENE → PATHOGEN (NEW in v2.0)
-  'resistant_to',          // [SPECIES|PRODUCT] → [PATHOGEN|TREATMENT]
+  'resistant_to',          // [SPECIES|PRODUCT|PATHOGEN] → [PATHOGEN|TREATMENT|CHEMICAL_COMPOUND]
   
   // Risk and protective factors (NEW in v2.0)
   'increases_risk_of',     // [ENVIRONMENTAL_PARAM|MANAGEMENT_PRACTICE] → [DISEASE|CLINICAL_SYMPTOM]
-  'reduces_risk_of',       // [MANAGEMENT_PRACTICE|TREATMENT] → [DISEASE|CLINICAL_SYMPTOM]
+  'reduces_risk_of',       // [MANAGEMENT_PRACTICE|TREATMENT|CHEMICAL_COMPOUND] → [DISEASE|CLINICAL_SYMPTOM]
   
   // Genetic and physiological (v2.0)
   'expressed_in',          // GENE → [TISSUE|LIFE_STAGE] (NEW in v2.0)
@@ -115,10 +116,14 @@ const RELATION_TYPES = [
   'has_test_result',       // SAMPLE → TEST_RESULT
   'measurement_of',        // MEASUREMENT → [PHENOTYPIC_TRAIT|ENVIRONMENTAL_PARAM]
   
+  // Chemical-specific relations (NEW with CHEMICAL_COMPOUND)
+  'inhibits',              // CHEMICAL_COMPOUND → [PATHOGEN|GENE|DISEASE]
+  'enhances',              // CHEMICAL_COMPOUND → [PHENOTYPIC_TRAIT|GENE]
+  
   // Operational (NEW in v2.0)
-  'applied_at',            // [TREATMENT|MANAGEMENT_PRACTICE] → [LOCATION|EVENT]
+  'applied_at',            // [TREATMENT|MANAGEMENT_PRACTICE|CHEMICAL_COMPOUND] → [LOCATION|EVENT]
   'located_in',            // * → LOCATION
-  'supplied_by',           // [PRODUCT|TREATMENT] → [SUPPLY_ENTITY|ORGANIZATION]
+  'supplied_by',           // [PRODUCT|TREATMENT|CHEMICAL_COMPOUND] → [SUPPLY_ENTITY|ORGANIZATION]
   'sold_to',               // PRODUCT → [ORGANIZATION|PERSON]
   'uses_protocol',         // [EVENT|ORGANIZATION|PERSON] → PROTOCOL
   'certified_by',          // [PRODUCT|ORGANIZATION|LOCATION] → CERTIFICATION
@@ -380,10 +385,10 @@ function AnnotationWorkspace() {
   useHotkeys('4', () => setSelectedEntityType('CLINICAL_SYMPTOM'));
   useHotkeys('5', () => setSelectedEntityType('PHENOTYPIC_TRAIT'));
   useHotkeys('6', () => setSelectedEntityType('GENE'));
-  useHotkeys('7', () => setSelectedEntityType('TREATMENT'));
-  useHotkeys('8', () => setSelectedEntityType('LIFE_STAGE'));
-  useHotkeys('9', () => setSelectedEntityType('MEASUREMENT'));
-  useHotkeys('0', () => setSelectedEntityType('LOCATION'));
+  useHotkeys('7', () => setSelectedEntityType('CHEMICAL_COMPOUND'));
+  useHotkeys('8', () => setSelectedEntityType('TREATMENT'));
+  useHotkeys('9', () => setSelectedEntityType('LIFE_STAGE'));
+  useHotkeys('0', () => setSelectedEntityType('MEASUREMENT'));
   
   // Mode switching
   useHotkeys('e', () => setAnnotationMode('entity'));
@@ -1035,19 +1040,19 @@ function AnnotationWorkspace() {
                 </Box>
                 <Box display="flex" justifyContent="space-between">
                   <Typography variant="body2"><strong>7</strong></Typography>
-                  <Typography variant="body2">TREATMENT</Typography>
+                  <Typography variant="body2">CHEMICAL_COMPOUND</Typography>
                 </Box>
                 <Box display="flex" justifyContent="space-between">
                   <Typography variant="body2"><strong>8</strong></Typography>
-                  <Typography variant="body2">LIFE_STAGE</Typography>
+                  <Typography variant="body2">TREATMENT</Typography>
                 </Box>
                 <Box display="flex" justifyContent="space-between">
                   <Typography variant="body2"><strong>9</strong></Typography>
-                  <Typography variant="body2">MEASUREMENT</Typography>
+                  <Typography variant="body2">LIFE_STAGE</Typography>
                 </Box>
                 <Box display="flex" justifyContent="space-between">
                   <Typography variant="body2"><strong>0</strong></Typography>
-                  <Typography variant="body2">LOCATION</Typography>
+                  <Typography variant="body2">MEASUREMENT</Typography>
                 </Box>
               </Box>
               

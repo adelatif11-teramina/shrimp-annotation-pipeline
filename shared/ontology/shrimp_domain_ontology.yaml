@@ -104,20 +104,49 @@ entities:
       - unit: string
       - measurement_period: duration
   
-  TREATMENT:
-    description: "Therapeutic interventions"
+  CHEMICAL_COMPOUND:
+    description: "Chemical substances and compounds used in aquaculture"
     examples:
       - "oxytetracycline"
       - "florfenicol"
+      - "enrofloxacin"
+      - "chlorine dioxide"
+      - "calcium hydroxide"
+      - "sodium hypochlorite"
+      - "formalin"
+      - "hydrogen peroxide"
+      - "beta-glucan"
+      - "vitamin C"
       - "probiotics"
-      - "bacteriophage therapy"
-      - "organic acids"
-      - "immunostimulants"
     categories:
-      antibiotics: ["oxytetracycline", "florfenicol", "enrofloxacin", "sulfadiazine"]
-      probiotics: ["Bacillus subtilis", "Lactobacillus", "Pseudomonas", "Saccharomyces"]
-      disinfectants: ["chlorine", "iodine", "formalin", "potassium permanganate"]
-      immunostimulants: ["beta-glucan", "peptidoglycan", "lipopolysaccharide"]
+      antibiotics: ["oxytetracycline", "florfenicol", "enrofloxacin", "sulfadiazine", "doxycycline"]
+      disinfectants: ["chlorine", "iodine", "formalin", "potassium permanganate", "hydrogen peroxide"]
+      immunostimulants: ["beta-glucan", "peptidoglycan", "lipopolysaccharide", "vitamin C"]
+      feed_additives: ["vitamin E", "selenium", "zinc oxide", "copper sulfate"]
+      water_treatment: ["lime", "calcium hydroxide", "zeolite", "activated carbon"]
+      therapeutics: ["organic acids", "essential oils", "plant extracts"]
+    canonical_forms:
+      "Ca(OH)2": "calcium hydroxide"
+      "H2O2": "hydrogen peroxide"
+      "CuSO4": "copper sulfate"
+      "ZnO": "zinc oxide"
+      "NaOCl": "sodium hypochlorite"
+      "ClO2": "chlorine dioxide"
+
+  TREATMENT:
+    description: "Therapeutic interventions and treatment protocols"
+    examples:
+      - "antibiotic therapy"
+      - "probiotic treatment"
+      - "bacteriophage therapy"
+      - "vaccination"
+      - "immunostimulant therapy"
+      - "water treatment"
+    categories:
+      medical_treatments: ["antibiotic therapy", "antiviral treatment", "vaccination"]
+      biological_treatments: ["probiotic therapy", "bacteriophage therapy", "biofloc treatment"]
+      preventive_treatments: ["immunostimulant therapy", "feed supplementation"]
+      environmental_treatments: ["water treatment", "pond disinfection", "biosecurity measures"]
   
   MANAGEMENT_PRACTICE:
     description: "Husbandry and management procedures"
@@ -419,11 +448,12 @@ relations:
       
   treated_with:
     domain: [DISEASE, CLINICAL_SYMPTOM]
-    range: TREATMENT
+    range: [TREATMENT, CHEMICAL_COMPOUND]
     description: "Treatment application"
     examples:
       - "AHPND treated_with florfenicol"
       - "white feces treated_with probiotics"
+      - "vibriosis treated_with oxytetracycline"
     attributes:
       - dosage: "amount with unit"
       - duration: "treatment period"
@@ -441,12 +471,13 @@ relations:
       - heritability: "genetic heritability value"
       
   resistant_to:
-    domain: [SPECIES, PRODUCT]
-    range: [PATHOGEN, TREATMENT]
+    domain: [SPECIES, PRODUCT, PATHOGEN]
+    range: [PATHOGEN, TREATMENT, CHEMICAL_COMPOUND]
     description: "Observed resistance"
     examples:
       - "SPR line resistant_to WSSV"
       - "strain X resistant_to oxytetracycline"
+      - "Vibrio strain resistant_to florfenicol"
       
   increases_risk_of:
     domain: [ENVIRONMENTAL_PARAM, MANAGEMENT_PRACTICE]
@@ -460,12 +491,13 @@ relations:
       - confidence: "float 0-1"
       
   reduces_risk_of:
-    domain: [MANAGEMENT_PRACTICE, TREATMENT]
+    domain: [MANAGEMENT_PRACTICE, TREATMENT, CHEMICAL_COMPOUND]
     range: [DISEASE, CLINICAL_SYMPTOM]
     description: "Protective factor"
     examples:
       - "biosecurity reduces_risk_of AHPND"
       - "probiotics reduces_risk_of vibriosis"
+      - "vitamin C reduces_risk_of stress-related mortality"
     attributes:
       - efficacy: "percent reduction"
       - confidence: "float 0-1"
@@ -513,15 +545,17 @@ relations:
       - "S-001 has_test_result WSSV positive"
       
   applied_at:
-    domain: [TREATMENT, MANAGEMENT_PRACTICE]
+    domain: [TREATMENT, MANAGEMENT_PRACTICE, CHEMICAL_COMPOUND]
     range: [LOCATION, EVENT]
     description: "Application site/time"
     examples:
       - "florfenicol applied_at pond P1"
       - "lime applied_at stocking_event"
+      - "chlorine dioxide applied_at water treatment"
     attributes:
       - timestamp: "datetime"
       - dosage: "amount with unit"
+      - concentration: "chemical concentration"
       
   located_in:
     domain: "*"
@@ -529,11 +563,12 @@ relations:
     description: "Spatial relationship"
     
   supplied_by:
-    domain: [PRODUCT, TREATMENT]
+    domain: [PRODUCT, TREATMENT, CHEMICAL_COMPOUND]
     range: [SUPPLY_ENTITY, ORGANIZATION]
     description: "Supply chain relationship"
     examples:
       - "PL batch supplied_by Blue Genetics"
+      - "florfenicol supplied_by pharmaceutical company"
       
   sold_to:
     domain: PRODUCT
@@ -576,6 +611,31 @@ relations:
     description: "Genetic variant relationship"
     examples:
       - "TLR has_variant TLR-mut1"
+
+  inhibits:
+    domain: CHEMICAL_COMPOUND
+    range: [PATHOGEN, GENE, DISEASE]
+    description: "Chemical inhibition or suppression"
+    examples:
+      - "oxytetracycline inhibits bacterial growth"
+      - "formalin inhibits viral replication"
+      - "organic acids inhibits pathogen colonization"
+    attributes:
+      - mechanism: "mode of action"
+      - IC50: "inhibitory concentration"
+      - selectivity: "target specificity"
+
+  enhances:
+    domain: CHEMICAL_COMPOUND
+    range: [PHENOTYPIC_TRAIT, GENE]
+    description: "Chemical enhancement or stimulation"
+    examples:
+      - "vitamin C enhances immune response"
+      - "beta-glucan enhances disease resistance"
+      - "probiotics enhances growth rate"
+    attributes:
+      - mechanism: "mode of action"
+      - dose_response: "dose-response relationship"
 
   part_of:
     domain: [LOCATION, PRODUCT, SAMPLE]

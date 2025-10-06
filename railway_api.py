@@ -455,16 +455,53 @@ async def get_triage_queue(
                 "char_end": 367,
                 "candidates": {
                     "entities": [
-                        {"text": "florfenicol", "label": "TREATMENT", "start": 15, "end": 26},
+                        {"text": "florfenicol", "label": "CHEMICAL_COMPOUND", "start": 15, "end": 26},
                         {"text": "10 mg/kg", "label": "MEASUREMENT", "start": 30, "end": 38},
                         {"text": "Penaeus vannamei", "label": "SPECIES", "start": 102, "end": 118},
                         {"text": "Vibrio parahaemolyticus", "label": "PATHOGEN", "start": 133, "end": 156},
                         {"text": "28-30°C", "label": "MEASUREMENT", "start": 280, "end": 287}
                     ],
                     "relations": [
-                        {"head": "florfenicol", "relation": "treats", "tail": "Vibrio parahaemolyticus"}
+                        {"head": "Vibrio parahaemolyticus", "relation": "treated_with", "tail": "florfenicol"}
                     ],
                     "topics": ["T_TREATMENT", "T_DISEASE"]
+                }
+            },
+            {
+                "id": 3,
+                "item_id": 3,
+                "doc_id": "demo_003",
+                "sent_id": "p_0",
+                "chunk_id": "p_0",
+                "paragraph_id": 1,
+                "text": "Supplementation of shrimp feed with vitamin C at 100 mg/kg significantly enhanced immune response and disease resistance in juvenile Penaeus vannamei. Post-larvae fed vitamin C-enriched diets showed improved survival rates when exposed to pathogenic Vibrio strains. The antioxidant properties of ascorbic acid help maintain cellular integrity during stress conditions.",
+                "priority_score": 0.82,
+                "priority_level": "high",
+                "status": "pending",
+                "created_at": datetime.now().isoformat(),
+                "chunking_mode": "paragraph",
+                "sentence_count": 3,
+                "char_start": 0,
+                "char_end": 375,
+                "candidates": {
+                    "entities": [
+                        {"text": "vitamin C", "label": "CHEMICAL_COMPOUND", "start": 40, "end": 49},
+                        {"text": "100 mg/kg", "label": "MEASUREMENT", "start": 53, "end": 62},
+                        {"text": "immune response", "label": "PHENOTYPIC_TRAIT", "start": 85, "end": 100},
+                        {"text": "disease resistance", "label": "PHENOTYPIC_TRAIT", "start": 105, "end": 123},
+                        {"text": "Penaeus vannamei", "label": "SPECIES", "start": 136, "end": 152},
+                        {"text": "post-larvae", "label": "LIFE_STAGE", "start": 154, "end": 165},
+                        {"text": "vitamin C", "label": "CHEMICAL_COMPOUND", "start": 170, "end": 179},
+                        {"text": "survival rates", "label": "PHENOTYPIC_TRAIT", "start": 205, "end": 219},
+                        {"text": "Vibrio", "label": "PATHOGEN", "start": 249, "end": 255},
+                        {"text": "ascorbic acid", "label": "CHEMICAL_COMPOUND", "start": 295, "end": 308}
+                    ],
+                    "relations": [
+                        {"head": "vitamin C", "relation": "enhances", "tail": "immune response"},
+                        {"head": "vitamin C", "relation": "enhances", "tail": "disease resistance"},
+                        {"head": "vitamin C", "relation": "enhances", "tail": "survival rates"}
+                    ],
+                    "topics": ["T_NUTRITION", "T_PREVENTION"]
                 }
             }
         ]
@@ -552,16 +589,53 @@ async def get_next_triage_item():
                 "char_end": 367,
                 "candidates": {
                     "entities": [
-                        {"text": "florfenicol", "label": "TREATMENT", "start": 15, "end": 26},
+                        {"text": "florfenicol", "label": "CHEMICAL_COMPOUND", "start": 15, "end": 26},
                         {"text": "10 mg/kg", "label": "MEASUREMENT", "start": 30, "end": 38},
                         {"text": "Penaeus vannamei", "label": "SPECIES", "start": 102, "end": 118},
                         {"text": "Vibrio parahaemolyticus", "label": "PATHOGEN", "start": 133, "end": 156},
                         {"text": "28-30°C", "label": "MEASUREMENT", "start": 280, "end": 287}
                     ],
                     "relations": [
-                        {"head": "florfenicol", "relation": "treats", "tail": "Vibrio parahaemolyticus"}
+                        {"head": "Vibrio parahaemolyticus", "relation": "treated_with", "tail": "florfenicol"}
                     ],
                     "topics": ["T_TREATMENT", "T_DISEASE"]
+                }
+            },
+            {
+                "id": 3,
+                "item_id": 3,
+                "doc_id": "demo_003",
+                "sent_id": "p_0",
+                "chunk_id": "p_0",
+                "paragraph_id": 1,
+                "text": "Supplementation of shrimp feed with vitamin C at 100 mg/kg significantly enhanced immune response and disease resistance in juvenile Penaeus vannamei. Post-larvae fed vitamin C-enriched diets showed improved survival rates when exposed to pathogenic Vibrio strains. The antioxidant properties of ascorbic acid help maintain cellular integrity during stress conditions.",
+                "priority_score": 0.82,
+                "priority_level": "high",
+                "status": "pending",
+                "created_at": datetime.now().isoformat(),
+                "chunking_mode": "paragraph",
+                "sentence_count": 3,
+                "char_start": 0,
+                "char_end": 375,
+                "candidates": {
+                    "entities": [
+                        {"text": "vitamin C", "label": "CHEMICAL_COMPOUND", "start": 40, "end": 49},
+                        {"text": "100 mg/kg", "label": "MEASUREMENT", "start": 53, "end": 62},
+                        {"text": "immune response", "label": "PHENOTYPIC_TRAIT", "start": 85, "end": 100},
+                        {"text": "disease resistance", "label": "PHENOTYPIC_TRAIT", "start": 105, "end": 123},
+                        {"text": "Penaeus vannamei", "label": "SPECIES", "start": 136, "end": 152},
+                        {"text": "post-larvae", "label": "LIFE_STAGE", "start": 154, "end": 165},
+                        {"text": "vitamin C", "label": "CHEMICAL_COMPOUND", "start": 170, "end": 179},
+                        {"text": "survival rates", "label": "PHENOTYPIC_TRAIT", "start": 205, "end": 219},
+                        {"text": "Vibrio", "label": "PATHOGEN", "start": 249, "end": 255},
+                        {"text": "ascorbic acid", "label": "CHEMICAL_COMPOUND", "start": 295, "end": 308}
+                    ],
+                    "relations": [
+                        {"head": "vitamin C", "relation": "enhances", "tail": "immune response"},
+                        {"head": "vitamin C", "relation": "enhances", "tail": "disease resistance"},
+                        {"head": "vitamin C", "relation": "enhances", "tail": "survival rates"}
+                    ],
+                    "topics": ["T_NUTRITION", "T_PREVENTION"]
                 }
             }
         ]
