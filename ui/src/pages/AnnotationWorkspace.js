@@ -150,6 +150,24 @@ function AnnotationWorkspace() {
   const [showDraftDialog, setShowDraftDialog] = useState(false);
   const [loading, setLoading] = useState(false);
   
+  // Load user settings for draft management
+  const [userSettings, setUserSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('annotation_settings');
+      return saved ? JSON.parse(saved) : {
+        draft_behavior: 'ask',
+        draft_retention_days: 7,
+        show_draft_dialog: true
+      };
+    } catch (error) {
+      return {
+        draft_behavior: 'ask',
+        draft_retention_days: 7,
+        show_draft_dialog: true
+      };
+    }
+  });
+  
   // Session analytics
   const [sessionStats, setSessionStats] = useState({
     itemsCompleted: 0,
@@ -168,8 +186,11 @@ function AnnotationWorkspace() {
     clearDraft,
     updateData,
     saveNow,
-    saveStatus
-  } = useAutoSave(currentItem?.id || currentItem?.item_id);
+    saveStatus,
+    shouldShowDraftDialog,
+    shouldAutoRestore,
+    shouldAutoDiscard
+  } = useAutoSave(currentItem?.id || currentItem?.item_id, null, userSettings);
 
   const {
     connectionStatus,
@@ -230,12 +251,23 @@ function AnnotationWorkspace() {
     }
   }, [entities, relations, topics, notes, confidence, currentItem, updateData]);
 
-  // Check for draft on item load
+  // Handle draft restoration based on user settings
   useEffect(() => {
     if (currentItem && isDrafted) {
-      setShowDraftDialog(true);
+      if (shouldAutoRestore()) {
+        // Automatically restore draft
+        console.log('🔄 Auto-restoring draft based on user settings');
+        handleRestoreDraft();
+      } else if (shouldAutoDiscard()) {
+        // Automatically discard draft
+        console.log('🗑️ Auto-discarding draft based on user settings');
+        handleDiscardDraft();
+      } else if (shouldShowDraftDialog()) {
+        // Show dialog to ask user
+        setShowDraftDialog(true);
+      }
     }
-  }, [currentItem, isDrafted]);
+  }, [currentItem, isDrafted, shouldAutoRestore, shouldAutoDiscard, shouldShowDraftDialog]);
 
   // Start auto-save when annotation begins
   useEffect(() => {

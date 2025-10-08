@@ -8,7 +8,7 @@ const DRAFT_KEY_PREFIX = 'annotation_draft_';
  * Auto-save hook for annotation work in progress
  * Prevents data loss from network issues, browser crashes, etc.
  */
-export function useAutoSave(itemId, initialData = null) {
+export function useAutoSave(itemId, initialData = null, userSettings = {}) {
   const [isDrafted, setIsDrafted] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
   const [saveStatus, setSaveStatus] = useState('idle'); // idle, saving, saved, error
@@ -29,6 +29,17 @@ export function useAutoSave(itemId, initialData = null) {
       if (savedDraft) {
         try {
           const draftData = JSON.parse(savedDraft);
+          
+          // Check if draft is expired based on retention settings
+          const draftAge = Date.now() - new Date(draftData.timestamp).getTime();
+          const retentionMs = (userSettings.draft_retention_days || 7) * 24 * 60 * 60 * 1000;
+          
+          if (draftAge > retentionMs) {
+            console.log('🗑️ Draft expired, removing:', itemId);
+            localStorage.removeItem(draftKey);
+            return;
+          }
+          
           setIsDrafted(true);
           setLastSaved(new Date(draftData.timestamp));
           console.log('📄 Loaded existing draft for item:', itemId);
@@ -38,7 +49,7 @@ export function useAutoSave(itemId, initialData = null) {
         }
       }
     }
-  }, [itemId]);
+  }, [itemId, userSettings.draft_retention_days]);
 
   // Check if data has changed since last save
   const hasChanges = useCallback(() => {
@@ -223,6 +234,21 @@ export function useAutoSave(itemId, initialData = null) {
     };
   }, [hasChanges, saveDraftLocally]);
 
+  // Auto-handle draft based on user settings
+  const shouldShowDraftDialog = () => {
+    return isDrafted && 
+           userSettings.show_draft_dialog !== false && 
+           userSettings.draft_behavior === 'ask';
+  };
+
+  const shouldAutoRestore = () => {
+    return isDrafted && userSettings.draft_behavior === 'auto_restore';
+  };
+
+  const shouldAutoDiscard = () => {
+    return isDrafted && userSettings.draft_behavior === 'auto_discard';
+  };
+
   return {
     // State
     isDrafted,
@@ -239,7 +265,12 @@ export function useAutoSave(itemId, initialData = null) {
     
     // Status helpers
     hasUnsavedChanges: hasChanges,
-    isAutoSaving: saveStatus === 'saving'
+    isAutoSaving: saveStatus === 'saving',
+    
+    // Draft behavior helpers
+    shouldShowDraftDialog,
+    shouldAutoRestore,
+    shouldAutoDiscard
   };
 }
 

@@ -33,6 +33,11 @@ function Settings() {
     notifications_enabled: true,
     theme: 'light',
     
+    // Draft Management Settings
+    draft_behavior: 'ask', // 'ask', 'auto_restore', 'auto_discard'
+    draft_retention_days: 7,
+    show_draft_dialog: true,
+    
     // Annotation Settings
     auto_accept_threshold: 0.95,
     enable_auto_accept: true,
@@ -68,6 +73,9 @@ function Settings() {
     try {
       setSaveStatus('saving');
       
+      // Save to localStorage for immediate use
+      localStorage.setItem('annotation_settings', JSON.stringify(settings));
+      
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1000));
       
@@ -88,6 +96,9 @@ function Settings() {
       auto_save: true,
       notifications_enabled: true,
       theme: 'light',
+      draft_behavior: 'ask',
+      draft_retention_days: 7,
+      show_draft_dialog: true,
       auto_accept_threshold: 0.95,
       enable_auto_accept: true,
       require_double_annotation: false,
@@ -190,6 +201,71 @@ function Settings() {
                   }
                   label="Enable notifications"
                 />
+              </Grid>
+              
+              <Grid item xs={12}>
+                <Divider sx={{ my: 2 }} />
+                <Typography variant="h6" gutterBottom>
+                  Draft Management
+                </Typography>
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Draft Behavior</InputLabel>
+                  <Select
+                    value={settings.draft_behavior}
+                    onChange={(e) => handleSettingChange('draft_behavior', e.target.value)}
+                  >
+                    <MenuItem value="ask">Ask what to do</MenuItem>
+                    <MenuItem value="auto_restore">Always restore drafts</MenuItem>
+                    <MenuItem value="auto_discard">Always discard drafts</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Draft Retention (days)"
+                  value={settings.draft_retention_days}
+                  onChange={(e) => handleSettingChange('draft_retention_days', parseInt(e.target.value))}
+                  helperText="How long to keep drafts before auto-cleanup"
+                />
+              </Grid>
+              
+              <Grid item xs={12}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={settings.show_draft_dialog}
+                      onChange={(e) => handleSettingChange('show_draft_dialog', e.target.checked)}
+                    />
+                  }
+                  label="Show draft restoration dialog"
+                />
+              </Grid>
+              
+              <Grid item xs={12}>
+                <Button
+                  variant="outlined"
+                  color="warning"
+                  onClick={() => {
+                    if (window.confirm('This will delete all saved drafts. Are you sure?')) {
+                      // Clear all drafts from localStorage
+                      const keys = Object.keys(localStorage);
+                      keys.forEach(key => {
+                        if (key.startsWith('annotation_draft_')) {
+                          localStorage.removeItem(key);
+                        }
+                      });
+                      alert('All drafts have been cleared.');
+                    }
+                  }}
+                >
+                  Clear All Drafts
+                </Button>
               </Grid>
             </Grid>
           </CardContent>
