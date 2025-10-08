@@ -13,6 +13,8 @@ from dataclasses import dataclass, asdict
 import hashlib
 from datetime import datetime
 import re
+import openai
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +94,9 @@ class DocumentIngestionService:
     def __init__(self, 
                  data_training_path: Optional[Path] = None,
                  segmenter: str = "regex",
-                 chunking_mode: str = "sentence"):
+                 chunking_mode: str = "sentence",
+                 enable_llm_preprocessing: bool = False,
+                 openai_api_key: Optional[str] = None):
         """
         Initialize the ingestion service.
         
@@ -100,6 +104,8 @@ class DocumentIngestionService:
             data_training_path: Path to data-training project
             segmenter: Sentence segmentation method (regex, spacy, nltk)
             chunking_mode: Text chunking mode ("sentence" or "paragraph")
+            enable_llm_preprocessing: Enable LLM-based text cleaning
+            openai_api_key: OpenAI API key for preprocessing
         """
         # Setup path to sibling project
         if data_training_path:
@@ -124,12 +130,98 @@ class DocumentIngestionService:
                 logger.warning("NLTK data not available, falling back to regex")
                 self.segmenter = "regex"
         
+        # Setup LLM preprocessing
+        self.enable_llm_preprocessing = enable_llm_preprocessing
+        if enable_llm_preprocessing:
+            api_key = openai_api_key or os.getenv('OPENAI_API_KEY')
+            if not api_key:
+                logger.warning("LLM preprocessing enabled but no OpenAI API key found. Disabling LLM preprocessing.")
+                self.enable_llm_preprocessing = False
+            else:
+                openai.api_key = api_key
+                logger.info("LLM preprocessing enabled")
+        
         logger.info(f"Initialized ingestion service with {self.segmenter} segmenter")
     
     def generate_doc_id(self, text: str, title: Optional[str] = None) -> str:
         """Generate unique document ID"""
         content = f"{title or ''}:{text[:1000]}"
         return hashlib.md5(content.encode()).hexdigest()[:12]
+    
+    def preprocess_text_with_llm(self, text: str, title: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
+        """
+        Use LLM to clean and filter text, removing irrelevant sections.
+        
+        Args:
+            text: Raw input text
+            title: Document title for context
+            
+        Returns:
+            Tuple of (cleaned_text, metadata_about_removal)
+        """
+        if not self.enable_llm_preprocessing:
+            return text, {"preprocessing": "disabled"}
+        
+        try:
+            # Create prompt for text cleaning
+            prompt = f"""You are an expert text processor for scientific literature in aquaculture and marine biology. 
+
+Your task is to clean the following document by:
+1. REMOVE: References/bibliography sections
+2. REMOVE: Author affiliations and contact information  
+3. REMOVE: Copyright notices and journal metadata
+4. REMOVE: Figure/table captions that don't contain scientific content
+5. REMOVE: Headers, footers, page numbers
+6. REMOVE: Acknowledgments sections
+7. REMOVE: Funding information
+8. REMOVE: Conflict of interest statements
+9. KEEP: All scientific content, methodology, results, discussion
+10. KEEP: Abstract, introduction, methods, results, conclusions
+11. KEEP: Any content related to shrimp, aquaculture, disease, pathogens, genetics
+
+Document title: {title or "Unknown"}
+
+Original text:
+{text[:4000]}{"..." if len(text) > 4000 else ""}
+
+Return ONLY the cleaned text without any explanations or metadata. Preserve paragraph structure with double newlines."""
+
+            from openai import OpenAI
+            client = OpenAI(api_key=openai.api_key)
+            
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are a scientific text processor specializing in aquaculture literature."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=3000,
+                temperature=0.1
+            )
+            
+            cleaned_text = response.choices[0].message.content.strip()
+            
+            # Calculate reduction metrics
+            original_length = len(text)
+            cleaned_length = len(cleaned_text)
+            reduction_ratio = (original_length - cleaned_length) / original_length if original_length > 0 else 0
+            
+            metadata = {
+                "preprocessing": "llm_enabled",
+                "original_length": original_length,
+                "cleaned_length": cleaned_length,
+                "reduction_ratio": round(reduction_ratio, 3),
+                "model_used": "gpt-3.5-turbo"
+            }
+            
+            logger.info(f"LLM preprocessing: {original_length} → {cleaned_length} chars ({reduction_ratio:.1%} reduction)")
+            
+            return cleaned_text, metadata
+            
+        except Exception as e:
+            logger.error(f"LLM preprocessing failed: {e}")
+            logger.info("Falling back to original text")
+            return text, {"preprocessing": "failed", "error": str(e)}
     
     def segment_sentences(self, text: str) -> List[Sentence]:
         """
@@ -278,7 +370,10 @@ class DocumentIngestionService:
             Document object
         """
         with open(file_path, 'r', encoding='utf-8') as f:
-            text = f.read()
+            raw_text = f.read()
+        
+        # Apply LLM preprocessing if enabled
+        text, preprocessing_metadata = self.preprocess_text_with_llm(raw_text, title or file_path.stem)
         
         # Generate document ID
         doc_id = self.generate_doc_id(text, title or file_path.stem)
@@ -296,17 +391,22 @@ class DocumentIngestionService:
             source=source,
             title=title or file_path.stem,
             pub_date=None,
-            raw_text=text,
+            raw_text=text,  # Store cleaned text as main text
             sentences=sentences,
             paragraphs=paragraphs,
             chunking_mode=self.chunking_mode,
             metadata=metadata or {}
         )
         
-        doc.metadata['file_path'] = str(file_path)
-        doc.metadata['ingestion_time'] = datetime.now().isoformat()
-        doc.metadata['sentence_count'] = len(sentences)
-        doc.metadata['chunking_mode'] = self.chunking_mode
+        # Add preprocessing and ingestion metadata
+        doc.metadata.update({
+            'file_path': str(file_path),
+            'ingestion_time': datetime.now().isoformat(),
+            'sentence_count': len(sentences),
+            'chunking_mode': self.chunking_mode,
+            'original_raw_text': raw_text,  # Keep original for reference
+            'preprocessing': preprocessing_metadata
+        })
         
         if self.chunking_mode == "paragraph" and paragraphs:
             doc.metadata['paragraph_count'] = len(paragraphs)
@@ -564,11 +664,16 @@ if __name__ == "__main__":
     parser.add_argument("--chunking-mode", default="sentence", 
                        choices=["sentence", "paragraph"],
                        help="Text chunking mode")
+    parser.add_argument("--enable-llm-preprocessing", action="store_true",
+                       help="Enable LLM-based text cleaning (requires OPENAI_API_KEY)")
     
     args = parser.parse_args()
     
     # Initialize service
-    service = DocumentIngestionService(chunking_mode=args.chunking_mode)
+    service = DocumentIngestionService(
+        chunking_mode=args.chunking_mode,
+        enable_llm_preprocessing=args.enable_llm_preprocessing
+    )
     
     # Process input
     input_path = Path(args.input)
