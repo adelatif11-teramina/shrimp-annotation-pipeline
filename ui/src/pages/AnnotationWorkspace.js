@@ -147,26 +147,8 @@ function AnnotationWorkspace() {
   const [showGuidelines, setShowGuidelines] = useState(false);
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const [showModifyDialog, setShowModifyDialog] = useState(false);
-  const [showDraftDialog, setShowDraftDialog] = useState(false);
   const [loading, setLoading] = useState(false);
   
-  // Load user settings for draft management
-  const [userSettings, setUserSettings] = useState(() => {
-    try {
-      const saved = localStorage.getItem('annotation_settings');
-      return saved ? JSON.parse(saved) : {
-        draft_behavior: 'ask',
-        draft_retention_days: 7,
-        show_draft_dialog: true
-      };
-    } catch (error) {
-      return {
-        draft_behavior: 'ask',
-        draft_retention_days: 7,
-        show_draft_dialog: true
-      };
-    }
-  });
   
   // Session analytics
   const [sessionStats, setSessionStats] = useState({
@@ -186,11 +168,8 @@ function AnnotationWorkspace() {
     clearDraft,
     updateData,
     saveNow,
-    saveStatus,
-    shouldShowDraftDialog,
-    shouldAutoRestore,
-    shouldAutoDiscard
-  } = useAutoSave(currentItem?.id || currentItem?.item_id, null, userSettings);
+    saveStatus
+  } = useAutoSave(currentItem?.id || currentItem?.item_id);
 
   const {
     connectionStatus,
@@ -251,23 +230,14 @@ function AnnotationWorkspace() {
     }
   }, [entities, relations, topics, notes, confidence, currentItem, updateData]);
 
-  // Handle draft restoration based on user settings
+  // Handle draft restoration - automatically restore without dialog
   useEffect(() => {
     if (currentItem && isDrafted) {
-      if (shouldAutoRestore()) {
-        // Automatically restore draft
-        console.log('🔄 Auto-restoring draft based on user settings');
-        handleRestoreDraft();
-      } else if (shouldAutoDiscard()) {
-        // Automatically discard draft
-        console.log('🗑️ Auto-discarding draft based on user settings');
-        handleDiscardDraft();
-      } else if (shouldShowDraftDialog()) {
-        // Show dialog to ask user
-        setShowDraftDialog(true);
-      }
+      // Automatically restore draft without showing dialog
+      console.log('🔄 Auto-restoring draft');
+      handleRestoreDraft();
     }
-  }, [currentItem, isDrafted, shouldAutoRestore, shouldAutoDiscard, shouldShowDraftDialog]);
+  }, [currentItem, isDrafted]);
 
   // Start auto-save when annotation begins
   useEffect(() => {
@@ -298,12 +268,6 @@ function AnnotationWorkspace() {
       setConfidence(draft.confidence || 'high');
       console.log('🔄 Restored draft data');
     }
-    setShowDraftDialog(false);
-  };
-
-  const handleDiscardDraft = () => {
-    clearDraft();
-    setShowDraftDialog(false);
   };
 
   const loadItem = async (id) => {
@@ -1107,31 +1071,6 @@ function AnnotationWorkspace() {
         </DialogActions>
       </Dialog>
 
-      {/* Draft Restoration Dialog */}
-      <Dialog
-        open={showDraftDialog}
-        onClose={() => setShowDraftDialog(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Draft Found</DialogTitle>
-        <DialogContent>
-          <Typography gutterBottom>
-            A previous draft was found for this annotation item. Would you like to restore your work?
-          </Typography>
-          <Alert severity="info" sx={{ mt: 2 }}>
-            This will restore your previously saved entities, relations, topics, and notes.
-          </Alert>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleDiscardDraft} color="error">
-            Discard Draft
-          </Button>
-          <Button onClick={handleRestoreDraft} variant="contained">
-            Restore Draft
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }
