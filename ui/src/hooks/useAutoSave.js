@@ -35,14 +35,14 @@ export function useAutoSave(itemId, initialData = null, userSettings = {}) {
           const retentionMs = (userSettings.draft_retention_days || 7) * 24 * 60 * 60 * 1000;
           
           if (draftAge > retentionMs) {
-            console.log('🗑️ Draft expired, removing:', itemId);
+            console.debug('🗑️ Draft expired, removing:', itemId);
             localStorage.removeItem(draftKey);
             return;
           }
           
           setIsDrafted(true);
           setLastSaved(new Date(draftData.timestamp));
-          console.log('📄 Loaded existing draft for item:', itemId);
+          console.debug('📄 Loaded existing draft for item:', itemId);
         } catch (error) {
           console.warn('Failed to parse draft data:', error);
           localStorage.removeItem(draftKey);
@@ -75,7 +75,7 @@ export function useAutoSave(itemId, initialData = null, userSettings = {}) {
       localStorage.setItem(draftKey, JSON.stringify(draftData));
       setIsDrafted(true);
       setLastSaved(new Date());
-      console.log('💾 Saved draft locally for item:', itemId);
+      console.debug('💾 Saved draft locally for item:', itemId);
     } catch (error) {
       console.error('Failed to save draft locally:', error);
     }
@@ -99,7 +99,7 @@ export function useAutoSave(itemId, initialData = null, userSettings = {}) {
 
       setSaveStatus('saved');
       lastSavedDataRef.current = { ...data };
-      console.log('☁️ Saved draft to server for item:', itemId);
+      console.debug('☁️ Saved draft to server for item:', itemId);
       
     } catch (error) {
       console.warn('Failed to save draft to server:', error);
@@ -137,7 +137,7 @@ export function useAutoSave(itemId, initialData = null, userSettings = {}) {
       }
     }, AUTO_SAVE_INTERVAL);
 
-    console.log('🔄 Started auto-save for item:', itemId);
+    console.debug('🔄 Started auto-save for item:', itemId);
   }, [itemId, hasChanges, autoSave]);
 
   // Stop auto-save interval
@@ -145,7 +145,7 @@ export function useAutoSave(itemId, initialData = null, userSettings = {}) {
     if (autoSaveIntervalRef.current) {
       clearInterval(autoSaveIntervalRef.current);
       autoSaveIntervalRef.current = null;
-      console.log('⏹️ Stopped auto-save for item:', itemId);
+      console.debug('⏹️ Stopped auto-save for item:', itemId);
     }
   }, [itemId]);
 
@@ -187,7 +187,7 @@ export function useAutoSave(itemId, initialData = null, userSettings = {}) {
       console.warn('Failed to clear server draft:', error);
     });
 
-    console.log('🗑️ Cleared draft for item:', itemId);
+    console.debug('🗑️ Cleared draft for item:', itemId);
   }, [itemId, apiCall]);
 
   // Update current data reference

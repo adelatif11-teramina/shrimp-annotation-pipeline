@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
   Typography,
   Card,
@@ -21,6 +22,8 @@ import {
   DialogActions,
   TextField,
   LinearProgress,
+  Snackbar,
+  Tooltip,
 } from '@mui/material';
 import {
   Upload as UploadIcon,
@@ -29,141 +32,134 @@ import {
   Delete as DeleteIcon,
   Add as AddIcon,
 } from '@mui/icons-material';
+import { useQuery, useMutation, useQueryClient } from 'react-query';
 
 import { useAnnotationAPI } from '../hooks/useAnnotationAPI';
 
-function DocumentManager() {
-  const [documents, setDocuments] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [uploadDialog, setUploadDialog] = useState(false);
-  const [newDocument, setNewDocument] = useState({
-    title: '',
-    text: '',
-    source: 'manual'
+const readFileAsText = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => resolve(event.target?.result || '');
+    reader.onerror = (event) => reject(event?.target?.error || new Error('Failed to read file'));
+    reader.readAsText(file);
   });
-  const [selectedFile, setSelectedFile] = useState(null);
 
+const extractPDFText = async (arrayBuffer) => {
+  const decoder = new TextDecoder('utf-8');
+  const text = decoder.decode(arrayBuffer);
+
+  const textContent = [];
+  const streamRegex = /stream\s*(.*?)\s*endstream/gs;
+  let match;
+
+  while ((match = streamRegex.exec(text)) !== null) {
+    const streamContent = match[1];
+    const readableText = streamContent
+      .replace(/[^\x20-\x7E\n\r]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (readableText.length > 10) {
+      textContent.push(readableText);
+    }
+  }
+
+  return textContent.join('\n\n').trim();
+};
+
+function DocumentManager() {
+  const [uploadDialog, setUploadDialog] = useState(false);
+  const [newDocument, setNewDocument] = useState({ title: '', text: '', source: 'manual' });
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
+
+  const queryClient = useQueryClient();
   const { getDocuments, ingestDocument } = useAnnotationAPI();
 
-  useEffect(() => {
-    fetchDocuments();
-  }, []);
+  const documentsQuery = useQuery(['documents', { limit: 100 }], () => getDocuments({ limit: 100 }), {
+    keepPreviousData: true,
+  });
 
-  const fetchDocuments = async () => {
-    try {
-      setLoading(true);
-      const response = await getDocuments();
-      // Extract documents array from API response
-      setDocuments(response?.documents || []);
-    } catch (error) {
-      console.error('Failed to fetch documents:', error);
-      setDocuments([]); // Ensure documents is always an array on error
-    } finally {
-      setLoading(false);
-    }
+  const ingestMutation = useMutation(ingestDocument, {
+    onSuccess: () => {
+      queryClient.invalidateQueries(['documents']);
+      handleSnackbar('Document ingested successfully.', 'success');
+      resetForm();
+    },
+    onError: (error) => {
+      const message = error?.message || 'Failed to upload document.';
+      handleSnackbar(message, 'error');
+    },
+  });
+
+  const documents = useMemo(() => documentsQuery.data?.documents || [], [documentsQuery.data]);
+
+  const handleSnackbar = (message, severity = 'info') => {
+    setSnackbar({ open: true, message, severity });
   };
 
-  const extractTextFromPDF = async (file) => {
-    try {
-      // Simple PDF text extraction using browser APIs
-      const arrayBuffer = await file.arrayBuffer();
-      const text = await extractPDFText(arrayBuffer);
-      return text;
-    } catch (error) {
-      console.error('PDF extraction failed:', error);
-      return null;
-    }
-  };
-
-  const extractPDFText = async (arrayBuffer) => {
-    // Basic PDF text extraction - this is a simplified approach
-    // For production, you'd want to use a proper PDF.js implementation
-    const decoder = new TextDecoder('utf-8');
-    const text = decoder.decode(arrayBuffer);
-    
-    // Extract readable text between 'stream' and 'endstream' markers
-    const textContent = [];
-    const streamRegex = /stream\s*(.*?)\s*endstream/gs;
-    let match;
-    
-    while ((match = streamRegex.exec(text)) !== null) {
-      const streamContent = match[1];
-      // Remove PDF formatting and extract readable text
-      const readableText = streamContent
-        .replace(/[^\x20-\x7E\n\r]/g, ' ') // Keep only printable ASCII
-        .replace(/\s+/g, ' ') // Normalize whitespace
-        .trim();
-      
-      if (readableText.length > 10) { // Only include substantial content
-        textContent.push(readableText);
-      }
-    }
-    
-    return textContent.join('\n\n').trim();
+  const closeSnackbar = (_, reason) => {
+    if (reason === 'clickaway') return;
+    setSnackbar((prev) => ({ ...prev, open: false }));
   };
 
   const handleFileSelect = async (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      setSelectedFile(file);
-      
-      // Set title to filename if not already set
-      if (!newDocument.title) {
-        setNewDocument({...newDocument, title: file.name.replace(/\.[^/.]+$/, "")});
-      }
-      
-      // Handle different file types
-      if (file.type === 'text/plain') {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          setNewDocument({...newDocument, text: e.target.result});
-        };
-        reader.readAsText(file);
-      } else if (file.type === 'application/pdf') {
-        // Attempt PDF text extraction
-        const extractedText = await extractTextFromPDF(file);
-        if (extractedText) {
-          setNewDocument({...newDocument, text: extractedText});
-        } else {
-          // If extraction fails, show a helpful message
-          setNewDocument({
-            ...newDocument, 
-            text: `// PDF uploaded: ${file.name}\n// Please manually copy and paste the text content from your PDF here,\n// or use a PDF-to-text converter and upload as a .txt file.`
-          });
-        }
-      }
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
     }
+
+    setSelectedFile(file);
+
+    if (!newDocument.title) {
+      setNewDocument((prev) => ({ ...prev, title: file.name.replace(/\.[^/.]+$/, '') }));
+    }
+
+    if (file.type === 'text/plain') {
+      const text = await readFileAsText(file);
+      setNewDocument((prev) => ({ ...prev, text }));
+      return;
+    }
+
+    if (file.type === 'application/pdf') {
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const text = await extractPDFText(arrayBuffer);
+        if (text) {
+          setNewDocument((prev) => ({ ...prev, text }));
+        } else {
+          setNewDocument((prev) => ({
+            ...prev,
+            text: `// PDF uploaded: ${file.name}\n// Please paste the extracted text here or upload a .txt file instead.`,
+          }));
+          handleSnackbar('PDF text extraction is limited. Please verify the imported content.', 'warning');
+        }
+      } catch (error) {
+        console.error('PDF extraction failed:', error);
+        handleSnackbar('Unable to extract text from PDF. Please upload a .txt file.', 'warning');
+      }
+      return;
+    }
+
+    handleSnackbar('Only plain text or PDF files are supported.', 'warning');
   };
 
   const handleUploadDocument = async () => {
     try {
       let documentText = newDocument.text;
-      
-      // If uploading a file and no text is set, read the file
+
       if (selectedFile && !documentText) {
         if (selectedFile.type === 'text/plain') {
-          const reader = new FileReader();
-          reader.onload = async (e) => {
-            const docData = {
-              doc_id: `doc_${Date.now()}`,
-              title: newDocument.title,
-              text: e.target.result,
-              source: newDocument.source,
-              metadata: { 
-                original_filename: selectedFile.name,
-                file_type: selectedFile.type 
-              }
-            };
-            await ingestDocument(docData);
-            resetForm();
-            fetchDocuments();
-          };
-          reader.readAsText(selectedFile);
-          return;
+          documentText = await readFileAsText(selectedFile);
         } else {
-          alert('Currently only text files are supported. For PDFs, please extract the text first.');
+          handleSnackbar('Please extract text from the selected file before uploading.', 'warning');
           return;
         }
+      }
+
+      if (!newDocument.title || !documentText) {
+        handleSnackbar('Title and document text are required.', 'warning');
+        return;
       }
 
       const docData = {
@@ -171,17 +167,18 @@ function DocumentManager() {
         title: newDocument.title,
         text: documentText,
         source: newDocument.source,
-        metadata: selectedFile ? { 
-          original_filename: selectedFile.name,
-          file_type: selectedFile.type 
-        } : {}
+        metadata: selectedFile
+          ? {
+              original_filename: selectedFile.name,
+              file_type: selectedFile.type,
+            }
+          : {},
       };
 
-      await ingestDocument(docData);
-      resetForm();
-      fetchDocuments();
+      await ingestMutation.mutateAsync(docData);
     } catch (error) {
       console.error('Failed to upload document:', error);
+      handleSnackbar('Failed to upload document.', 'error');
     }
   };
 
@@ -193,24 +190,21 @@ function DocumentManager() {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'processed': return 'success';
-      case 'processing': return 'warning';
-      case 'pending': return 'default';
-      case 'error': return 'error';
-      default: return 'default';
+      case 'processed':
+        return 'success';
+      case 'processing':
+        return 'warning';
+      case 'pending':
+        return 'default';
+      case 'error':
+        return 'error';
+      default:
+        return 'default';
     }
   };
 
-  if (loading) {
-    return (
-      <Box sx={{ p: 3 }}>
-        <Typography variant="h4" gutterBottom>
-          Document Manager
-        </Typography>
-        <LinearProgress />
-      </Box>
-    );
-  }
+  const isLoading = documentsQuery.isLoading;
+  const isRefetching = documentsQuery.isFetching;
 
   return (
     <Box sx={{ p: 3 }}>
@@ -220,7 +214,7 @@ function DocumentManager() {
             Document Manager
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Manage documents for annotation and training data generation
+            Manage source documents available to the annotation pipeline.
           </Typography>
         </div>
         <Button
@@ -228,225 +222,197 @@ function DocumentManager() {
           startIcon={<AddIcon />}
           onClick={() => setUploadDialog(true)}
         >
-          Add Document
+          Upload Document
         </Button>
       </Box>
 
-      {/* Document Statistics */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h4" color="primary">
-                {documents.length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Total Documents
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h4" color="success.main">
-                {documents.filter(doc => doc.status === 'processed').length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Processed
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h4" color="warning.main">
-                {documents.filter(doc => doc.status === 'processing').length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Processing
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h4" color="text.secondary">
-                {documents.filter(doc => doc.status === 'pending').length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Pending
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Documents Table */}
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Document ID</TableCell>
-              <TableCell>Title</TableCell>
-              <TableCell>Source</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Created</TableCell>
-              <TableCell>Sentences</TableCell>
-              <TableCell>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {documents.map((doc, index) => (
-              <TableRow key={doc.id || index}>
-                <TableCell>
-                  <Typography variant="body2" fontFamily="monospace">
-                    {doc.doc_id || `doc_${index}`}
-                  </Typography>
-                </TableCell>
-                <TableCell>
-                  <Typography variant="body2" fontWeight="medium">
-                    {doc.title || 'Untitled Document'}
-                  </Typography>
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={doc.source || 'unknown'}
-                    size="small"
-                    variant="outlined"
-                  />
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={doc.status || 'pending'}
-                    color={getStatusColor(doc.status)}
-                    size="small"
-                  />
-                </TableCell>
-                <TableCell>
-                  <Typography variant="body2">
-                    {doc.created_at 
-                      ? new Date(doc.created_at).toLocaleDateString()
-                      : new Date().toLocaleDateString()
-                    }
-                  </Typography>
-                </TableCell>
-                <TableCell>
-                  <Typography variant="body2">
-                    {doc.sentence_count || '0'} sentences
-                  </Typography>
-                </TableCell>
-                <TableCell>
-                  <IconButton color="primary" size="small">
-                    <ViewIcon />
-                  </IconButton>
-                  <IconButton color="default" size="small">
-                    <ExportIcon />
-                  </IconButton>
-                  <IconButton color="error" size="small">
-                    <DeleteIcon />
-                  </IconButton>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
-      {documents.length === 0 && (
-        <Box sx={{ textAlign: 'center', py: 4 }}>
-          <Typography variant="h6" color="text.secondary">
-            No documents found
-          </Typography>
-          <Typography variant="body2" color="text.secondary" mt={1}>
-            Upload your first document to get started with annotation.
-          </Typography>
+      {isLoading ? (
+        <Box sx={{ py: 5, textAlign: 'center' }}>
+          <LinearProgress sx={{ maxWidth: 320, mx: 'auto', mb: 2 }} />
+          <Typography color="text.secondary">Loading documents…</Typography>
         </Box>
+      ) : (
+        <>
+          {isRefetching && <LinearProgress sx={{ mb: 2 }} />}
+
+          <Card>
+            <CardContent>
+              <Grid container spacing={3}>
+                <Grid item xs={6} md={3}>
+                  <Typography variant="h5">{documents.length}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Total documents
+                  </Typography>
+                </Grid>
+                <Grid item xs={6} md={3}>
+                  <Typography variant="h5">
+                    {documents.filter((doc) => doc.status === 'processed').length}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Processed
+                  </Typography>
+                </Grid>
+                <Grid item xs={6} md={3}>
+                  <Typography variant="h5">
+                    {documents.filter((doc) => doc.status === 'pending').length}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Pending
+                  </Typography>
+                </Grid>
+                <Grid item xs={6} md={3}>
+                  <Typography variant="h5">
+                    {documents.filter((doc) => doc.status === 'error').length}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    With errors
+                  </Typography>
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+
+          <TableContainer component={Paper} sx={{ mt: 3 }}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Title</TableCell>
+                  <TableCell>Source</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Created</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {documents.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} align="center">
+                      <Typography color="text.secondary">
+                        No documents available yet. Upload one to get started.
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  documents.map((doc) => (
+                    <TableRow key={doc.doc_id || doc.id} hover>
+                      <TableCell>
+                        <Typography variant="body1" fontWeight={500}>
+                          {doc.title || 'Untitled'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {doc.doc_id || doc.id}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>{doc.source || 'unknown'}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={doc.status || 'pending'}
+                          size="small"
+                          color={getStatusColor(doc.status)}
+                          variant={doc.status === 'processed' ? 'filled' : 'outlined'}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {doc.created_at
+                          ? new Date(doc.created_at).toLocaleString()
+                          : '—'}
+                      </TableCell>
+                      <TableCell align="right">
+                        <Tooltip title="Preview document">
+                          <span>
+                            <IconButton disabled={!doc.text}>
+                              <ViewIcon />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                        <Tooltip title="Export document">
+                          <IconButton>
+                            <ExportIcon />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete document">
+                          <IconButton color="error">
+                            <DeleteIcon />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </>
       )}
 
-      {/* Upload Dialog */}
-      <Dialog open={uploadDialog} onClose={() => setUploadDialog(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Add New Document</DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
+      <Dialog open={uploadDialog} onClose={resetForm} fullWidth maxWidth="md">
+        <DialogTitle>Upload Document</DialogTitle>
+        <DialogContent dividers>
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
-                label="Document Title"
+                label="Title"
                 value={newDocument.title}
-                onChange={(e) => setNewDocument({...newDocument, title: e.target.value})}
+                onChange={(e) => setNewDocument((prev) => ({ ...prev, title: e.target.value }))}
+                sx={{ mb: 2 }}
               />
-            </Grid>
-            <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                select
                 label="Source"
                 value={newDocument.source}
-                onChange={(e) => setNewDocument({...newDocument, source: e.target.value})}
-                SelectProps={{ native: true }}
+                onChange={(e) => setNewDocument((prev) => ({ ...prev, source: e.target.value }))}
+                sx={{ mb: 2 }}
+              />
+              <Button
+                component="label"
+                variant="outlined"
+                startIcon={<UploadIcon />}
               >
-                <option value="manual">Manual Entry</option>
-                <option value="pdf">PDF Upload</option>
-                <option value="paper">Research Paper</option>
-                <option value="report">Technical Report</option>
-                <option value="hatchery_log">Hatchery Log</option>
-              </TextField>
-            </Grid>
-            <Grid item xs={12}>
-              {newDocument.source === 'pdf' ? (
-                <Box>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Upload File
-                  </Typography>
-                  <input
-                    type="file"
-                    accept=".txt,.pdf"
-                    onChange={handleFileSelect}
-                    style={{ marginBottom: '16px' }}
-                  />
-                  {selectedFile && (
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      Selected: {selectedFile.name}
-                    </Typography>
-                  )}
-                  <TextField
-                    fullWidth
-                    multiline
-                    rows={6}
-                    label="Document Text (auto-filled from file or paste manually)"
-                    value={newDocument.text}
-                    onChange={(e) => setNewDocument({...newDocument, text: e.target.value})}
-                    placeholder="Text will appear here when you select a file, or you can paste text manually..."
-                  />
-                </Box>
-              ) : (
-                <TextField
-                  fullWidth
-                  multiline
-                  rows={8}
-                  label="Document Text"
-                  value={newDocument.text}
-                  onChange={(e) => setNewDocument({...newDocument, text: e.target.value})}
-                  placeholder="Paste or type your document text here..."
-                />
+                Select File
+                <input type="file" hidden onChange={handleFileSelect} />
+              </Button>
+              {selectedFile && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Selected: {selectedFile.name}
+                </Typography>
               )}
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                multiline
+                minRows={10}
+                label="Document Text"
+                value={newDocument.text}
+                onChange={(e) => setNewDocument((prev) => ({ ...prev, text: e.target.value }))}
+              />
             </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={resetForm}>Cancel</Button>
-          <Button 
-            onClick={handleUploadDocument}
+          <Button
             variant="contained"
-            disabled={!newDocument.title || (!newDocument.text && !selectedFile)}
+            startIcon={<UploadIcon />}
+            onClick={handleUploadDocument}
+            disabled={ingestMutation.isLoading}
           >
-            Upload Document
+            {ingestMutation.isLoading ? 'Uploading…' : 'Upload'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={closeSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={closeSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

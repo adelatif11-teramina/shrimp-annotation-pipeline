@@ -24,7 +24,7 @@ export function useNetworkRecovery() {
     const handleOnline = () => {
       setIsOnline(true);
       setConnectionStatus('reconnecting');
-      console.log('🌐 Network connection restored');
+      console.debug('🌐 Network connection restored');
       
       // Retry failed operations after a brief delay
       setTimeout(() => {
@@ -35,7 +35,7 @@ export function useNetworkRecovery() {
     const handleOffline = () => {
       setIsOnline(false);
       setConnectionStatus('offline');
-      console.log('📡 Network connection lost');
+      console.debug('📡 Network connection lost');
     };
 
     window.addEventListener('online', handleOnline);
@@ -57,12 +57,12 @@ export function useNetworkRecovery() {
         if (connectionStatus === 'offline' || connectionStatus === 'reconnecting') {
           setConnectionStatus('online');
           setRetryCount(0);
-          console.log('✅ API connectivity confirmed');
+          console.debug('✅ API connectivity confirmed');
         }
       } catch (error) {
         if (connectionStatus === 'online') {
           setConnectionStatus('offline');
-          console.log('❌ API connectivity lost');
+          console.warn('❌ API connectivity lost');
         }
       }
     };
@@ -103,7 +103,7 @@ export function useNetworkRecovery() {
       return [...prev, queuedOp];
     });
 
-    console.log('📥 Queued failed operation:', operation.type, operation.itemId);
+    console.debug('📥 Queued failed operation:', operation.type, operation.itemId);
   }, []);
 
   // Execute a single operation with retry logic
@@ -118,11 +118,11 @@ export function useNetworkRecovery() {
           timeout: 10000
         });
 
-        console.log(`✅ Successfully executed ${type} for item ${itemId} (attempt ${attempt + 1})`);
+        console.debug(`✅ Successfully executed ${type} for item ${itemId} (attempt ${attempt + 1})`);
         return result;
         
       } catch (error) {
-        console.log(`❌ Attempt ${attempt + 1} failed for ${type}:`, error.message);
+        console.debug(`❌ Attempt ${attempt + 1} failed for ${type}:`, error.message);
         
         if (attempt < MAX_RETRIES - 1) {
           const delay = RETRY_DELAYS[attempt] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
@@ -163,9 +163,9 @@ export function useNetworkRecovery() {
 
     if (stillFailedOperations.length === 0) {
       setConnectionStatus('online');
-      console.log('🎉 All failed operations successfully retried');
+      console.info('🎉 All failed operations successfully retried');
     } else {
-      console.log(`⚠️ ${stillFailedOperations.length} operations still failed after retry`);
+      console.warn(`⚠️ ${stillFailedOperations.length} operations still failed after retry`);
     }
   }, [failedOperations, executeWithRetry]);
 
@@ -176,7 +176,7 @@ export function useNetworkRecovery() {
     try {
       return await apiCall(endpoint, options);
     } catch (error) {
-      console.log('🔄 API call failed, handling recovery:', error.message);
+      console.debug('🔄 API call failed, handling recovery:', error.message);
 
       // Check if it's a network error that should be retried
       const isNetworkError = 
@@ -207,7 +207,7 @@ export function useNetworkRecovery() {
             await new Promise(resolve => setTimeout(resolve, 2000));
             return await apiCall(endpoint, options);
           } catch (retryError) {
-            console.log('Immediate retry also failed');
+            console.warn('Immediate retry also failed');
           }
         }
 

@@ -179,7 +179,7 @@ function EntityAnnotator({ entities, setEntities, entityTypes, selectedType, set
   };
 
   const getEntityColor = (label) => {
-    return entityTypes[label]?.color || '#gray';
+    return entityTypes[label]?.color || '#9e9e9e';
   };
 
   return (

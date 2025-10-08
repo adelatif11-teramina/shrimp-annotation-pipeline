@@ -1,5 +1,48 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+const resolveWebSocketBase = () => {
+  try {
+    const storedSettings = localStorage.getItem('annotation_settings');
+    if (storedSettings) {
+      const parsed = JSON.parse(storedSettings);
+      if (parsed?.ws_url) {
+        return parsed.ws_url;
+      }
+      if (parsed?.api_url && typeof window !== 'undefined') {
+        const url = new URL(parsed.api_url, window.location.origin);
+        url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+        return url.origin;
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to read WebSocket settings:', error);
+  }
+
+  if (process.env.REACT_APP_WS_URL) {
+    return process.env.REACT_APP_WS_URL;
+  }
+
+  if (typeof window !== 'undefined') {
+    const { protocol, host } = window.location;
+    const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${wsProtocol}//${host}`;
+  }
+
+  return 'ws://localhost:8002';
+};
+
+const buildWebSocketUrl = (baseUrl, path, params = {}) => {
+  const sanitizedBase = baseUrl.replace(/\/$/, '');
+  const sanitizedPath = path.startsWith('/') ? path : `/${path}`;
+  const url = new URL(`${sanitizedBase}${sanitizedPath}`);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      url.searchParams.set(key, value);
+    }
+  });
+  return url.toString();
+};
+
 const useWebSocket = (userId, username = 'Anonymous', role = 'annotator') => {
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
@@ -15,14 +58,18 @@ const useWebSocket = (userId, username = 'Anonymous', role = 'annotator') => {
   
   const connect = useCallback(() => {
     try {
-      const wsUrl = `ws://localhost:8002/ws/${userId}?username=${encodeURIComponent(username)}&role=${role}`;
-      console.log('🔗 Connecting to WebSocket:', wsUrl);
-      
+      const baseUrl = resolveWebSocketBase();
+      const wsUrl = buildWebSocketUrl(baseUrl, `/ws/${userId}`, {
+        username,
+        role,
+      });
+      console.debug('🔗 Connecting to WebSocket:', wsUrl);
+
       ws.current = new WebSocket(wsUrl);
       setConnectionStatus('connecting');
       
       ws.current.onopen = () => {
-        console.log('✅ WebSocket connected');
+        console.debug('✅ WebSocket connected');
         setIsConnected(true);
         setConnectionStatus('connected');
         reconnectAttempts.current = 0;
@@ -51,14 +98,14 @@ const useWebSocket = (userId, username = 'Anonymous', role = 'annotator') => {
       };
       
       ws.current.onclose = (event) => {
-        console.log('🔌 WebSocket disconnected:', event.code, event.reason);
+        console.debug('🔌 WebSocket disconnected:', event.code, event.reason);
         setIsConnected(false);
         setConnectionStatus('disconnected');
         
         // Attempt to reconnect
         if (reconnectAttempts.current < maxReconnectAttempts) {
           const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
-          console.log(`🔄 Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current + 1}/${maxReconnectAttempts})`);
+          console.debug(`🔄 Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current + 1}/${maxReconnectAttempts})`);
           
           reconnectTimeout.current = setTimeout(() => {
             reconnectAttempts.current++;
@@ -83,7 +130,7 @@ const useWebSocket = (userId, username = 'Anonymous', role = 'annotator') => {
   }, [userId, username, role]);
   
   const handleMessage = (message) => {
-    console.log('📨 WebSocket message:', message);
+    console.debug('📨 WebSocket message:', message);
     
     switch (message.type) {
       case 'user_presence_update':
@@ -139,7 +186,7 @@ const useWebSocket = (userId, username = 'Anonymous', role = 'annotator') => {
         break;
         
       default:
-        console.log('Unhandled message type:', message.type);
+        console.debug('Unhandled message type:', message.type);
     }
   };
   
@@ -218,14 +265,13 @@ const useWebSocket = (userId, username = 'Anonymous', role = 'annotator') => {
   
   // Connect on mount - temporarily disabled
   useEffect(() => {
-    // Temporarily disable WebSocket for demo
-    console.log('WebSocket disabled for demo mode');
-    // if (userId) {
-    //   connect();
-    // }
-    
+    if (!userId) {
+      return undefined;
+    }
+
+    connect();
     return () => {
-      // disconnect();
+      disconnect();
     };
   }, [userId, connect, disconnect]);
   

@@ -12,6 +12,8 @@ import {
   Divider,
   Badge,
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
+import useMediaQuery from '@mui/material/useMediaQuery';
 import {
   Dashboard as DashboardIcon,
   Assignment as TriageIcon,
@@ -22,8 +24,6 @@ import {
   Settings as SettingsIcon,
   Science as ScienceIcon,
 } from '@mui/icons-material';
-
-const drawerWidth = 240;
 
 const navigationItems = [
   { path: '/dashboard', label: 'Dashboard', icon: DashboardIcon },
@@ -38,6 +38,10 @@ const navigationItems = [
 function Navigation() {
   const navigate = useNavigate();
   const location = useLocation();
+  const theme = useTheme();
+  const isMdUp = useMediaQuery(theme.breakpoints.up('md'));
+  const drawerWidth = isMdUp ? 240 : 72;
+  const showLabels = isMdUp;
 
   // Mock data for badges - in real app would come from API
   const badgeData = {
@@ -53,14 +57,17 @@ function Navigation() {
         '& .MuiDrawer-paper': {
           width: drawerWidth,
           boxSizing: 'border-box',
+          overflowX: 'hidden',
         },
       }}
     >
-      <Toolbar>
-        <ScienceIcon sx={{ mr: 1, color: 'primary.main' }} />
-        <Typography variant="h6" noWrap component="div">
-          Shrimp Annotator
-        </Typography>
+      <Toolbar sx={{ justifyContent: showLabels ? 'flex-start' : 'center' }}>
+        <ScienceIcon sx={{ mr: showLabels ? 1 : 0, color: 'primary.main' }} />
+        {showLabels && (
+          <Typography variant="h6" noWrap component="div">
+            Shrimp Annotator
+          </Typography>
+        )}
       </Toolbar>
       <Divider />
       <List>
@@ -74,6 +81,13 @@ function Navigation() {
               <ListItemButton
                 selected={isActive}
                 onClick={() => navigate(item.path)}
+                sx={{
+                  '& .MuiListItemIcon-root': {
+                    minWidth: showLabels ? 40 : 0,
+                    justifyContent: 'center',
+                  },
+                  px: showLabels ? 2 : 1,
+                }}
               >
                 <ListItemIcon>
                   {item.badge && badgeData[item.badge] ? (
@@ -84,7 +98,7 @@ function Navigation() {
                     <Icon />
                   )}
                 </ListItemIcon>
-                <ListItemText primary={item.label} />
+                {showLabels && <ListItemText primary={item.label} />}
               </ListItemButton>
             </ListItem>
           );

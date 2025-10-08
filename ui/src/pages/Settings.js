@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Typography,
@@ -18,6 +18,11 @@ import {
   Tabs,
   Tab,
   Slider,
+  Snackbar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   Save as SaveIcon,
@@ -29,6 +34,7 @@ function Settings() {
   const [settings, setSettings] = useState({
     // General Settings
     api_url: '',  // Use proxy from package.json to avoid CORS issues
+    ws_url: 'ws://localhost:8002',
     auto_save: true,
     notifications_enabled: true,
     theme: 'light',
@@ -61,6 +67,8 @@ function Settings() {
   });
   
   const [saveStatus, setSaveStatus] = useState(null);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
+  const [confirmClearDrafts, setConfirmClearDrafts] = useState(false);
 
   const handleSettingChange = (key, value) => {
     setSettings(prev => ({
@@ -68,6 +76,32 @@ function Settings() {
       [key]: value
     }));
   };
+
+  const showSnackbar = (message, severity = 'info') => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const handleSnackbarClose = (_, reason) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
+  const requestClearDrafts = () => setConfirmClearDrafts(true);
+
+  const handleConfirmClearDrafts = () => {
+    const keys = Object.keys(localStorage);
+    keys.forEach((key) => {
+      if (key.startsWith('annotation_draft_')) {
+        localStorage.removeItem(key);
+      }
+    });
+    showSnackbar('All drafts have been cleared.', 'success');
+    setConfirmClearDrafts(false);
+  };
+
+  const handleCancelClearDrafts = () => setConfirmClearDrafts(false);
 
   const handleSaveSettings = async () => {
     try {
@@ -83,9 +117,11 @@ function Settings() {
       // await updateSystemSettings(settings);
       
       setSaveStatus('success');
+      showSnackbar('Settings saved successfully.', 'success');
       setTimeout(() => setSaveStatus(null), 3000);
     } catch (error) {
       setSaveStatus('error');
+      showSnackbar('Failed to save settings. Please try again.', 'error');
       setTimeout(() => setSaveStatus(null), 3000);
     }
   };
@@ -93,6 +129,7 @@ function Settings() {
   const handleResetSettings = () => {
     setSettings({
       api_url: 'http://localhost:8000',
+      ws_url: 'ws://localhost:8002',
       auto_save: true,
       notifications_enabled: true,
       theme: 'light',
@@ -113,6 +150,7 @@ function Settings() {
       retraining_threshold: 100,
       require_manual_approval: false,
     });
+    showSnackbar('Settings restored to defaults.', 'info');
   };
 
   const TabPanel = ({ children, value, index }) => (
@@ -165,6 +203,15 @@ function Settings() {
                   value={settings.api_url}
                   onChange={(e) => handleSettingChange('api_url', e.target.value)}
                   helperText="Base URL for the annotation API server"
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="WebSocket URL"
+                  value={settings.ws_url}
+                  onChange={(e) => handleSettingChange('ws_url', e.target.value)}
+                  helperText="Base URL for real-time collaboration events"
                 />
               </Grid>
               <Grid item xs={12} md={6}>
@@ -251,18 +298,7 @@ function Settings() {
                 <Button
                   variant="outlined"
                   color="warning"
-                  onClick={() => {
-                    if (window.confirm('This will delete all saved drafts. Are you sure?')) {
-                      // Clear all drafts from localStorage
-                      const keys = Object.keys(localStorage);
-                      keys.forEach(key => {
-                        if (key.startsWith('annotation_draft_')) {
-                          localStorage.removeItem(key);
-                        }
-                      });
-                      alert('All drafts have been cleared.');
-                    }
-                  }}
+                  onClick={requestClearDrafts}
                 >
                   Clear All Drafts
                 </Button>
@@ -475,8 +511,35 @@ function Settings() {
           >
             Reset to Defaults
           </Button>
-        </Box>
-      </Card>
+      </Box>
+    </Card>
+
+      <Dialog open={confirmClearDrafts} onClose={handleCancelClearDrafts}>
+        <DialogTitle>Clear All Drafts?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1">
+            This will permanently delete all saved annotation drafts for this device.
+            You will not be able to recover them. Do you want to continue?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelClearDrafts}>Cancel</Button>
+          <Button color="warning" variant="contained" onClick={handleConfirmClearDrafts}>
+            Clear drafts
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={handleSnackbarClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleSnackbarClose} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

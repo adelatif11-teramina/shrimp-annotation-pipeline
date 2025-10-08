@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Box,
   Grid,
@@ -43,6 +43,8 @@ import {
   Area,
 } from 'recharts';
 
+import { useQuery } from 'react-query';
+
 import { useAnnotationAPI } from '../hooks/useAnnotationAPI';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
@@ -50,105 +52,113 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 function Dashboard() {
   const [activeTab, setActiveTab] = useState(0);
   const [timeRange, setTimeRange] = useState('24h');
-  const [realTimeData, setRealTimeData] = useState(null);
-  const [annotationStats, setAnnotationStats] = useState(null);
-  const [triageQueue, setTriageQueue] = useState(null);
-  const [documents, setDocuments] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  
-  const { 
-    getSystemStatistics, 
-    getTriageQueue,
-    getAnnotationStatistics,
-    getDocuments,
-    apiCall 
-  } = useAnnotationAPI();
 
-  // Real-time data fetching
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setIsLoading(true);
-        
-        // Fetch all data in parallel
-        const [systemStats, annotStats, queueData, docData] = await Promise.all([
-          getSystemStatistics().catch(() => null),
-          getAnnotationStatistics().catch(() => null),
-          getTriageQueue({ limit: 100 }).catch(() => null),
-          getDocuments({ limit: 50 }).catch(() => null)
-        ]);
-        
-        setRealTimeData({
-          system: systemStats,
-          timestamp: new Date().toISOString()
-        });
-        
-        setAnnotationStats(annotStats);
-        setTriageQueue(queueData);
-        setDocuments(docData);
-        
-        setError(null);
-      } catch (error) {
-        console.error('Failed to fetch dashboard data:', error);
-        setError('Failed to load dashboard data');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const { getSystemStatistics, getTriageQueue, getAnnotationStatistics, getDocuments } =
+    useAnnotationAPI();
 
-    fetchData();
-    const interval = setInterval(fetchData, 30000); // Update every 30 seconds
-    
-    return () => clearInterval(interval);
-  }, [timeRange]);
+  const systemStatsQuery = useQuery(['systemStats'], getSystemStatistics, {
+    refetchInterval: 60000,
+  });
 
-  // Calculate real metrics from data
+  const annotationStatsQuery = useQuery(['annotationStats'], getAnnotationStatistics, {
+    refetchInterval: 60000,
+  });
+
+  const triageQueueQuery = useQuery(
+    ['triageQueue', { limit: 100, range: timeRange }],
+    () => getTriageQueue({ limit: 100 }),
+    {
+      refetchInterval: 30000,
+      keepPreviousData: true,
+    },
+  );
+
+  const documentsQuery = useQuery(
+    ['documents', { limit: 50 }],
+    () => getDocuments({ limit: 50 }),
+    {
+      refetchInterval: 120000,
+      keepPreviousData: true,
+    },
+  );
+
+  const annotationStats = annotationStatsQuery.data;
+  const triageQueue = triageQueueQuery.data;
+  const documents = documentsQuery.data;
+  const systemStats = systemStatsQuery.data;
+
+  const isLoading =
+    systemStatsQuery.isLoading ||
+    annotationStatsQuery.isLoading ||
+    triageQueueQuery.isLoading ||
+    documentsQuery.isLoading;
+
+  const error =
+    systemStatsQuery.error ||
+    annotationStatsQuery.error ||
+    triageQueueQuery.error ||
+    documentsQuery.error;
+
+  const lastUpdated = useMemo(() => {
+    const timestamps = [
+      systemStatsQuery.dataUpdatedAt,
+      annotationStatsQuery.dataUpdatedAt,
+      triageQueueQuery.dataUpdatedAt,
+      documentsQuery.dataUpdatedAt,
+    ].filter(Boolean);
+    if (!timestamps.length) {
+      return null;
+    }
+    return new Date(Math.max(...timestamps));
+  }, [
+    systemStatsQuery.dataUpdatedAt,
+    annotationStatsQuery.dataUpdatedAt,
+    triageQueueQuery.dataUpdatedAt,
+    documentsQuery.dataUpdatedAt,
+  ]);
+
+  const triageItems = useMemo(() => {
+    const rawItems = triageQueue?.items || triageQueue || [];
+    return Array.isArray(rawItems) ? rawItems : [];
+  }, [triageQueue]);
+
   const calculateMetrics = () => {
-    if (!annotationStats || !triageQueue) {
+    if (!annotationStats) {
       return {
-        queueSize: 0,
+        queueSize: triageItems.length,
         throughput: 0,
         qualityScore: 0,
         autoAcceptRate: 0,
         activeAnnotators: 0,
-        goldAnnotations: 0
+        goldAnnotations: 0,
       };
     }
 
     const summary = annotationStats.summary || {};
-    const queueItems = triageQueue.items || [];
-    const pendingItems = queueItems.filter(item => item.status === 'pending').length;
-    
-    // Calculate throughput based on time range
+    const pendingItems = triageItems.filter((item) => item.status === 'pending').length;
+
     const annotations = annotationStats.annotations || [];
     const now = new Date();
     const cutoff = new Date(now - (timeRange === '1h' ? 3600000 : 86400000));
-    const recentAnnotations = annotations.filter(a => 
-      new Date(a.created_at) > cutoff
-    ).length;
+    const recentAnnotations = annotations.filter((a) => new Date(a.created_at) > cutoff).length;
     const hours = timeRange === '1h' ? 1 : 24;
     const throughput = Math.round(recentAnnotations / hours);
 
-    // Calculate quality score from acceptance rate
     const qualityScore = summary.acceptance_rate || 0;
+    const autoAcceptRate = ((summary.modified || 0) / Math.max(summary.total_annotations || 1, 1)) * 100;
 
-    // Calculate auto-accept rate
-    const autoAcceptRate = ((summary.modified || 0) / (summary.total_annotations || 1)) * 100;
-
-    // Get unique annotators
     const uniqueAnnotators = new Set();
     if (annotationStats.by_user) {
-      annotationStats.by_user.forEach(user => uniqueAnnotators.add(user.user_id));
+      annotationStats.by_user.forEach((user) => uniqueAnnotators.add(user.user_id));
     }
 
     return {
-      queueSize: pendingItems || triageQueue.total || 0,
+      queueSize: pendingItems || triageQueue?.total || triageItems.length,
       throughput,
       qualityScore,
       autoAcceptRate: autoAcceptRate.toFixed(1),
       activeAnnotators: uniqueAnnotators.size,
-      goldAnnotations: summary.total_annotations || 0
+      goldAnnotations: summary.total_annotations || 0,
     };
   };
 
@@ -161,37 +171,32 @@ function Dashboard() {
         throughputData: [],
         qualityData: [],
         priorityData: [],
-        annotatorData: []
+        annotatorData: [],
       };
     }
 
-    // Process throughput data from by_date statistics
-    const throughputData = (annotationStats.by_date || []).map(day => ({
+    const throughputData = (annotationStats.by_date || []).map((day) => ({
       time: new Date(day.date).toLocaleDateString(),
       annotations: day.total,
       decisions: day.accepted,
-      rejected: day.total - day.accepted
+      rejected: day.total - day.accepted,
     }));
 
-    // Process quality data from decision statistics
     const summary = annotationStats.summary || {};
     const qualityData = [
       {
         date: new Date().toLocaleDateString(),
         precision: summary.acceptance_rate ? summary.acceptance_rate / 100 : 0,
-        recall: 0.9, // Would need actual recall calculation
-        f1: summary.acceptance_rate ? (summary.acceptance_rate / 100) * 0.95 : 0
-      }
+        recall: summary.recall ? summary.recall / 100 : 0.9,
+        f1: summary.f1_score ? summary.f1_score / 100 : summary.acceptance_rate ? (summary.acceptance_rate / 100) * 0.95 : 0,
+      },
     ];
 
-    // Process priority distribution from triage queue
     const priorityMap = {};
-    if (triageQueue?.items) {
-      triageQueue.items.forEach(item => {
-        const level = item.priority_level || 'medium';
-        priorityMap[level] = (priorityMap[level] || 0) + 1;
-      });
-    }
+    triageItems.forEach((item) => {
+      const level = item.priority_level || 'medium';
+      priorityMap[level] = (priorityMap[level] || 0) + 1;
+    });
 
     const priorityData = [
       { name: 'Critical', value: priorityMap.critical || 0, color: '#FF5722' },
@@ -200,19 +205,18 @@ function Dashboard() {
       { name: 'Low', value: priorityMap.low || 0, color: '#4CAF50' },
     ];
 
-    // Process annotator data
-    const annotatorData = (annotationStats.by_user || []).map(user => ({
+    const annotatorData = (annotationStats.by_user || []).map((user) => ({
       name: `User ${user.user_id}`,
       annotations: user.total,
-      accuracy: user.acceptance_rate / 100,
-      avgTime: user.avg_time_per_annotation || 0
+      accuracy: (user.acceptance_rate || 0) / 100,
+      avgTime: user.avg_time_per_annotation || 0,
     }));
 
     return {
       throughputData,
       qualityData,
       priorityData,
-      annotatorData
+      annotatorData,
     };
   };
 
@@ -233,13 +237,14 @@ function Dashboard() {
   }
 
   if (error) {
+    const errorMessage = error?.message || 'Failed to load dashboard data';
     return (
       <Box sx={{ p: 3 }}>
         <Typography variant="h4" gutterBottom>
           Dashboard
         </Typography>
         <Alert severity="error">
-          {error}
+          {errorMessage}
         </Alert>
       </Box>
     );
@@ -256,9 +261,9 @@ function Dashboard() {
             <Typography variant="body2" color="text.secondary">
               Live data monitoring
             </Typography>
-            {realTimeData && (
+            {lastUpdated && (
               <Chip 
-                label={`Last updated: ${new Date(realTimeData.timestamp).toLocaleTimeString()}`}
+                label={`Last updated: ${lastUpdated.toLocaleTimeString()}`}
                 size="small"
                 color="success"
               />
@@ -290,7 +295,7 @@ function Dashboard() {
             value={metrics.queueSize}
             icon={<TriageIcon />}
             color="primary"
-            change={triageQueue?.items ? `${triageQueue.items.length} items` : "0"}
+            change={`${triageItems.length} items`}
             changeType="stable"
           />
         </Grid>
@@ -340,7 +345,7 @@ function Dashboard() {
             value={metrics.goldAnnotations}
             icon={<TrendIcon />}
             color="success"
-            change={`${documents?.total || 0} docs`}
+            change={`${documents?.total || documents?.documents?.length || 0} docs`}
             changeType="increase"
           />
         </Grid>
@@ -365,7 +370,7 @@ function Dashboard() {
           {activeTab === 1 && <QualityTab data={chartData.qualityData} stats={annotationStats} />}
           {activeTab === 2 && <TriageTab data={chartData.priorityData} triageStats={triageQueue} />}
           {activeTab === 3 && <AnnotatorTab data={chartData.annotatorData} stats={annotationStats} />}
-          {activeTab === 4 && <SystemHealthTab systemData={realTimeData?.system} documents={documents} />}
+          {activeTab === 4 && <SystemHealthTab systemData={systemStats} documents={documents} />}
         </CardContent>
       </Card>
     </Box>
@@ -777,9 +782,12 @@ function AnnotatorTab({ data, stats }) {
 }
 
 function SystemHealthTab({ systemData, documents }) {
-  const totalDocs = documents?.total || 0;
-  const processedDocs = documents?.documents?.filter(d => d.status === 'processed').length || 0;
-  const pendingDocs = totalDocs - processedDocs;
+  const docList = documents?.documents || documents || [];
+  const totalDocs = Array.isArray(docList) ? docList.length : documents?.total || 0;
+  const processedDocs = Array.isArray(docList)
+    ? docList.filter((d) => d.status === 'processed').length
+    : 0;
+  const pendingDocs = Math.max(totalDocs - processedDocs, 0);
   
   // Calculate real system health from available data
   const healthChecks = [
