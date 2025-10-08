@@ -1,8 +1,8 @@
 {
-  "version": "2.0.0",
+  "version": "3.0.0",
   "entity_extraction": {
-    "system_prompt": "You are an expert annotator for shrimp aquaculture scientific literature. Extract entities with high precision following domain-specific disambiguation rules.",
-    "main_prompt": "Extract all domain-relevant entities from this sentence. Return ONLY valid JSON.\n\nAllowed entity types with disambiguation rules:\n- SPECIES: Organism names (shrimp species, bacteria)\n- PATHOGEN: Disease agents (Vibrio, viruses, parasites)\n- DISEASE: Clinical conditions/syndromes (AHPND, WSD, TPD)\n- CLINICAL_SYMPTOM: Observed abnormalities (white feces, lethargy, soft shell) - Use when described as observed signs\n- PHENOTYPIC_TRAIT: Measurable performance metrics (survival rate, growth rate, FCR) - Use when quantifiable\n- GENE: Genetic markers and genes (PvIGF, hemocyanin, TLR)\n- TREATMENT: Medications, probiotics, interventions\n- MEASUREMENT: Reified measurements with value+unit (28°C, 10 mg/kg, 85%)\n- LIFE_STAGE: Development stages (PL15, juvenile, broodstock)\n- MANAGEMENT_PRACTICE: Farming practices (biosecurity, water exchange)\n- ENVIRONMENTAL_PARAM: Water parameters (temperature, salinity, DO)\n- LOCATION: Geographic/facility locations (pond, hatchery, Thailand)\n- SAMPLE: Physical samples with IDs (S-001, water sample W123)\n- TEST_TYPE: Diagnostic methods (PCR, qPCR, histopathology)\n- TEST_RESULT: Test outcomes (WSSV positive, Ct=22)\n- EVENT: Timestamped occurrences (mortality event, outbreak)\n- TISSUE: Anatomical parts (hepatopancreas, gill, hemolymph)\n- PRODUCT: Commercial products (PL batch, frozen shrimp)\n- SUPPLY_ENTITY: Supply chain participants (hatchery, feed supplier)\n- PERSON: Individuals (farmer, technician, veterinarian)\n- ORGANIZATION: Companies/institutions (CP Foods, research institute)\n- PROTOCOL: SOPs (biosecurity protocol, treatment regimen)\n- CERTIFICATION: Quality certs (BAP, ASC, organic)\n\nDisambiguation rules:\n1. If trait described as abnormality → CLINICAL_SYMPTOM\n2. If trait has numeric value → PHENOTYPIC_TRAIT  \n3. If measurement has value+unit → MEASUREMENT\n4. If sample has ID → SAMPLE\n5. If test mentioned with result → TEST_RESULT\n\nSentence: \"{sentence}\"\n\nOutput format:\n{{\"entities\": [{{\"text\": \"...\", \"label\": \"...\", \"start\": int, \"end\": int, \"confidence\": 0.0-1.0, \"canonical\": \"standard_form\"}}]}}",
+    "system_prompt": "You are an expert in shrimp aquaculture, disease, and biomedical text mining. Your task is to read passages and extract structured knowledge with high precision following domain-specific disambiguation rules.",
+    "main_prompt": "Extract all domain-relevant entities from this sentence. Return ONLY valid JSON.\n\nEntity types (assign strictly from this schema):\n- SPECIES: Organism names (shrimp, fish, bacteria, fungi, viruses) - e.g., Penaeus vannamei, Vibrio harveyi\n- PATHOGEN: Specific disease-causing organism/agent (TSV, Vibrio parahaemolyticus, WSSV)\n- DISEASE: Clinical conditions/syndromes (Taura Syndrome, White Spot Disease, AHPND, EHP)\n- CLINICAL_SYMPTOM: Observed abnormalities (lesions, mortality, muscle opacity, white feces, lethargy) - Use when described as observed signs\n- PHENOTYPIC_TRAIT: Measurable performance metrics (fast growth, disease resistance, fecundity, survival rate, FCR) - Use when quantifiable\n- GENE: Genetic markers and genes (vhvp-2, growth gene, resistance marker, PvIGF, hemocyanin)\n- CHEMICAL_COMPOUND: Chemical substances (formalin, chlorine, antibiotics, oxytetracycline, probiotics)\n- TREATMENT: Therapeutic interventions (formalin bath, pond drying, SPF broodstock use, antibiotic therapy)\n- LIFE_STAGE: Development stages (larvae, postlarvae, juveniles, broodstock, PL15, nauplius)\n- MEASUREMENT: Reified measurements with value+unit (growth rate, FCR, salinity value, 28°C, 10 mg/kg, 85%)\n- SAMPLE: Physical samples (hemolymph, hepatopancreas tissue, water sample, S-001)\n- TEST_TYPE: Diagnostic methods (PCR, histology, microscopy, probe test, qPCR, LAMP)\n- TEST_RESULT: Test outcomes (positive, negative, presence of occlusion bodies, WSSV positive, Ct=22)\n- MANAGEMENT_PRACTICE: Farming practices (stocking density, aeration, biosecurity, water exchange)\n- ENVIRONMENTAL_PARAM: Water parameters (temperature, salinity, dissolved oxygen, pH, ammonia)\n- LOCATION: Geographic/facility locations (pond, hatchery, farm site, country, Thailand)\n- EVENT: Timestamped occurrences (disease outbreak, mortality event, shipment)\n- TISSUE: Anatomical parts (gills, cuticle, hepatopancreas, muscle, hemolymph)\n- PRODUCT: Commercial products (postlarvae, broodstock, shrimp feed, PL batch)\n- SUPPLY_ENTITY: Supply chain participants (hatchery, feed mill, broodstock supplier)\n- PERSON: Individuals (researcher, farmer, technician, veterinarian)\n- ORGANIZATION: Companies/institutions (university, lab, company, CP Foods, research institute)\n- PROTOCOL: SOPs (bioassay method, PCR protocol, sanitation SOP, treatment regimen)\n- CERTIFICATION: Quality certifications (SPF, ASC, BAP, organic)\n\nDisambiguation rules:\n1. If trait described as abnormality → CLINICAL_SYMPTOM\n2. If trait has numeric value or performance metric → PHENOTYPIC_TRAIT  \n3. If measurement has value+unit → MEASUREMENT\n4. If sample has ID or specific tissue type → SAMPLE\n5. If test mentioned with result → TEST_RESULT\n6. Disease-causing agents are PATHOGEN, resulting conditions are DISEASE\n7. Use snake_case for canonical forms when possible\n\nSentence: \"{sentence}\"\n\nOutput format:\n{{\"entities\": [{{\"text\": \"...\", \"label\": \"...\", \"start\": int, \"end\": int, \"confidence\": 0.0-1.0, \"canonical\": \"standard_form\"}}]}}\n\nConfidence guidelines: 0.9 for clear matches, 0.7 for ambiguous cases, 0.5 for uncertain.",
     "few_shot_examples": [
       {
         "sentence": "Vibrio parahaemolyticus causes AHPND in Penaeus vannamei post-larvae at 28°C.",
@@ -78,47 +78,64 @@
   },
   
   "relation_extraction": {
-    "system_prompt": "You are an expert at extracting relationships between entities in shrimp aquaculture text. Use precise predicates with domain-range constraints.",
-    "main_prompt": "Given the sentence and identified entities, extract relationships using these predicates:\n\n**Core biological relations:**\n- infected_by: SPECIES → PATHOGEN (host infected by pathogen)\n- causes: [PATHOGEN|ENVIRONMENTAL_PARAM] → [DISEASE|CLINICAL_SYMPTOM] (causal relationship)\n- treated_with: [DISEASE|CLINICAL_SYMPTOM] → TREATMENT (treatment application)\n- confers_resistance_to: GENE → PATHOGEN (genetic resistance mechanism)\n- resistant_to: [SPECIES|PRODUCT] → [PATHOGEN|TREATMENT] (observed resistance)\n\n**Risk and protective factors:**\n- increases_risk_of: [ENVIRONMENTAL_PARAM|MANAGEMENT_PRACTICE] → [DISEASE|CLINICAL_SYMPTOM]\n- reduces_risk_of: [MANAGEMENT_PRACTICE|TREATMENT] → [DISEASE|CLINICAL_SYMPTOM]\n\n**Genetic and physiological:**\n- expressed_in: GENE → [TISSUE|LIFE_STAGE] (gene expression location/stage)\n- affects_trait: [GENE|ENVIRONMENTAL_PARAM|MANAGEMENT_PRACTICE] → PHENOTYPIC_TRAIT\n- has_variant: GENE → GENE (genetic variant relationship)\n\n**Sampling and testing:**\n- sample_taken_from: SAMPLE → [LOCATION|SPECIES|TISSUE] (sample source)\n- tested_with: SAMPLE → TEST_TYPE (test performed)\n- has_test_result: SAMPLE → TEST_RESULT (test outcome)\n- measurement_of: MEASUREMENT → [PHENOTYPIC_TRAIT|ENVIRONMENTAL_PARAM]\n\n**Operational:**\n- applied_at: [TREATMENT|MANAGEMENT_PRACTICE] → [LOCATION|EVENT] (application site/time)\n- located_in: * → LOCATION (spatial relationship)\n- supplied_by: [PRODUCT|TREATMENT] → [SUPPLY_ENTITY|ORGANIZATION]\n- sold_to: PRODUCT → [ORGANIZATION|PERSON]\n- uses_protocol: [EVENT|ORGANIZATION|PERSON] → PROTOCOL\n- certified_by: [PRODUCT|ORGANIZATION|LOCATION] → CERTIFICATION\n- part_of: [LOCATION|PRODUCT|SAMPLE] → [LOCATION|PRODUCT] (hierarchical grouping)\n\nSentence: \"{sentence}\"\nEntities: {entities}\n\nReturn ONLY valid JSON with evidence and polarity:\n{{\"relations\": [{{\"head\": entity_index, \"tail\": entity_index, \"label\": \"...\", \"evidence\": \"text supporting relation\", \"confidence\": 0.0-1.0, \"polarity\": \"positive|negative|speculative\"}}]}}",
+    "system_prompt": "You are an expert at extracting relationships between entities in shrimp aquaculture text. Use standardized verbs with precise domain-range constraints.",
+    "main_prompt": "Given the sentence and identified entities, extract relationships using these standardized predicates:\n\n**Core biological relations:**\n- CAUSES: [PATHOGEN|ENVIRONMENTAL_PARAM] → [DISEASE|CLINICAL_SYMPTOM] (causal relationship)\n- ASSOCIATED_WITH: General associations between entities (weaker than CAUSES)\n- RESISTANT_TO: [SPECIES|PRODUCT] → [PATHOGEN|TREATMENT] (observed resistance)\n- SUSCEPTIBLE_TO: [SPECIES|LIFE_STAGE] → [PATHOGEN|DISEASE] (vulnerability)\n- PREVENTS: [TREATMENT|MANAGEMENT_PRACTICE] → [DISEASE|CLINICAL_SYMPTOM] (prevention)\n- CARRIES: [SPECIES|SAMPLE] → [PATHOGEN] (pathogen carrier)\n\n**Genetic and molecular:**\n- ENCODED_BY: [GENE] → [SPECIES] (gene-host relationship)\n- ENRICHED_IN: [GENE|PATHOGEN] → [TISSUE|SAMPLE] (enrichment location)\n- DOMINATED_BY: [SAMPLE|TISSUE] → [SPECIES|PATHOGEN] (dominant organism)\n- SIMILAR_TO: [SPECIES|GENE|PATHOGEN] → [SPECIES|GENE|PATHOGEN] (similarity)\n- AFFECTS: [GENE|ENVIRONMENTAL_PARAM|TREATMENT] → [PHENOTYPIC_TRAIT|SPECIES] (effect relationship)\n\n**Measurement and testing:**\n- MEASURED_BY: [PHENOTYPIC_TRAIT|ENVIRONMENTAL_PARAM] → [TEST_TYPE|MEASUREMENT] (measurement method)\n- DETECTED_BY: [PATHOGEN|DISEASE] → [TEST_TYPE] (detection method)\n- CONTROLLED_BY: [ENVIRONMENTAL_PARAM|DISEASE] → [MANAGEMENT_PRACTICE|TREATMENT] (control method)\n\n**Spatial and temporal:**\n- OCCURS_IN: [DISEASE|EVENT] → [LOCATION|LIFE_STAGE] (occurrence location/stage)\n- SPREADS_BY: [PATHOGEN|DISEASE] → [MANAGEMENT_PRACTICE|EVENT] (transmission method)\n- LINKED_TO: General linkage between entities\n- REQUIRES: [PROCESS|TREATMENT] → [CHEMICAL_COMPOUND|PROTOCOL] (requirement)\n- PRODUCES: [SPECIES|PROCESS] → [PRODUCT|MEASUREMENT] (production)\n\n**Operational (legacy support):**\n- infected_by: SPECIES → PATHOGEN (use SUSCEPTIBLE_TO instead)\n- treated_with: [DISEASE|CLINICAL_SYMPTOM] → TREATMENT (use PREVENTS instead)\n- located_in: * → LOCATION (use OCCURS_IN instead)\n- supplied_by: [PRODUCT|TREATMENT] → [SUPPLY_ENTITY|ORGANIZATION]\n- certified_by: [PRODUCT|ORGANIZATION|LOCATION] → CERTIFICATION\n\nSentence: \"{sentence}\"\nEntities: {entities}\n\nReturn ONLY valid JSON with evidence and confidence:\n{{\"relations\": [{{\"head\": entity_index, \"tail\": entity_index, \"label\": \"...\", \"evidence\": \"text supporting relation\", \"confidence\": 0.0-1.0}}]}}\n\nConfidence guidelines: 0.9 for explicit relations, 0.7 for implied relations, 0.5 for uncertain.",
     "few_shot_examples": [
       {
-        "sentence": "Vibrio parahaemolyticus causes AHPND in Penaeus vannamei.",
+        "sentence": "Taura Syndrome Virus (TSV) causes acute mortality in juvenile Penaeus vannamei.",
         "entities": [
-          {"index": 0, "text": "Vibrio parahaemolyticus", "label": "PATHOGEN"},
-          {"index": 1, "text": "AHPND", "label": "DISEASE"},
-          {"index": 2, "text": "Penaeus vannamei", "label": "SPECIES"}
+          {"index": 0, "text": "Taura Syndrome Virus", "label": "PATHOGEN"},
+          {"index": 1, "text": "TSV", "label": "PATHOGEN"},
+          {"index": 2, "text": "acute mortality", "label": "CLINICAL_SYMPTOM"},
+          {"index": 3, "text": "juvenile Penaeus vannamei", "label": "LIFE_STAGE"}
         ],
         "output": {
           "relations": [
-            {"head": 0, "tail": 1, "label": "causes", "evidence": "causes", "confidence": 0.95, "polarity": "positive"},
-            {"head": 2, "tail": 0, "label": "infected_by", "evidence": "in", "confidence": 0.90, "polarity": "positive"}
+            {"head": 0, "tail": 2, "label": "CAUSES", "evidence": "causes acute mortality", "confidence": 0.9},
+            {"head": 0, "tail": 3, "label": "AFFECTS", "evidence": "in juvenile Penaeus vannamei", "confidence": 0.9},
+            {"head": 0, "tail": 1, "label": "SIMILAR_TO", "evidence": "(TSV)", "confidence": 0.95}
           ]
         }
       },
       {
-        "sentence": "High ammonia levels increase risk of gill damage in post-larvae.",
+        "sentence": "Formalin bath treatment prevents white spot disease in shrimp.",
         "entities": [
-          {"index": 0, "text": "High ammonia levels", "label": "ENVIRONMENTAL_PARAM"},
-          {"index": 1, "text": "gill damage", "label": "CLINICAL_SYMPTOM"},
-          {"index": 2, "text": "post-larvae", "label": "LIFE_STAGE"}
+          {"index": 0, "text": "Formalin bath", "label": "TREATMENT"},
+          {"index": 1, "text": "white spot disease", "label": "DISEASE"},
+          {"index": 2, "text": "shrimp", "label": "SPECIES"}
         ],
         "output": {
           "relations": [
-            {"head": 0, "tail": 1, "label": "increases_risk_of", "evidence": "increase risk of", "confidence": 0.90, "polarity": "positive"}
+            {"head": 0, "tail": 1, "label": "PREVENTS", "evidence": "prevents white spot disease", "confidence": 0.9},
+            {"head": 1, "tail": 2, "label": "AFFECTS", "evidence": "in shrimp", "confidence": 0.8}
           ]
         }
       },
       {
-        "sentence": "Sample S-001 tested by PCR showed WSSV positive.",
+        "sentence": "WSSV was detected by PCR in hepatopancreas tissue samples.",
         "entities": [
-          {"index": 0, "text": "Sample S-001", "label": "SAMPLE"},
+          {"index": 0, "text": "WSSV", "label": "PATHOGEN"},
           {"index": 1, "text": "PCR", "label": "TEST_TYPE"},
-          {"index": 2, "text": "WSSV positive", "label": "TEST_RESULT"}
+          {"index": 2, "text": "hepatopancreas tissue", "label": "TISSUE"},
+          {"index": 3, "text": "samples", "label": "SAMPLE"}
         ],
         "output": {
           "relations": [
-            {"head": 0, "tail": 1, "label": "tested_with", "evidence": "tested by", "confidence": 0.95, "polarity": "positive"},
-            {"head": 0, "tail": 2, "label": "has_test_result", "evidence": "showed", "confidence": 0.95, "polarity": "positive"}
+            {"head": 0, "tail": 1, "label": "DETECTED_BY", "evidence": "detected by PCR", "confidence": 0.9},
+            {"head": 0, "tail": 2, "label": "ENRICHED_IN", "evidence": "in hepatopancreas tissue", "confidence": 0.8},
+            {"head": 3, "tail": 2, "label": "CARRIES", "evidence": "tissue samples", "confidence": 0.7}
+          ]
+        }
+      },
+      {
+        "sentence": "Disease resistance traits are controlled by selective breeding programs.",
+        "entities": [
+          {"index": 0, "text": "Disease resistance", "label": "PHENOTYPIC_TRAIT"},
+          {"index": 1, "text": "selective breeding", "label": "MANAGEMENT_PRACTICE"}
+        ],
+        "output": {
+          "relations": [
+            {"head": 0, "tail": 1, "label": "CONTROLLED_BY", "evidence": "controlled by selective breeding", "confidence": 0.8}
           ]
         }
       }
@@ -127,6 +144,47 @@
     "max_tokens": 600
   },
   
+  "knowledge_graph_extraction": {
+    "system_prompt": "You are an expert in shrimp aquaculture, disease, and biomedical text mining. Your task is to read passages and extract structured knowledge into a graph JSON with nodes and links.",
+    "main_prompt": "Extract entities and relationships from this sentence into a knowledge graph JSON format.\n\nEntity Types (assign strictly from this schema):\nSPECIES, PATHOGEN, DISEASE, CLINICAL_SYMPTOM, PHENOTYPIC_TRAIT, GENE, CHEMICAL_COMPOUND, TREATMENT, LIFE_STAGE, MEASUREMENT, SAMPLE, TEST_TYPE, TEST_RESULT, MANAGEMENT_PRACTICE, ENVIRONMENTAL_PARAM, LOCATION, EVENT, TISSUE, PRODUCT, SUPPLY_ENTITY, PERSON, ORGANIZATION, PROTOCOL, CERTIFICATION\n\nRelation Types (use standardized verbs):\nCAUSES, ASSOCIATED_WITH, RESISTANT_TO, SUSCEPTIBLE_TO, PREVENTS, CARRIES, ENCODED_BY, ENRICHED_IN, DOMINATED_BY, SIMILAR_TO, MEASURED_BY, DETECTED_BY, CONTROLLED_BY, AFFECTS, OCCURS_IN, SPREADS_BY, LINKED_TO, REQUIRES, PRODUCES\n\nRules:\n- Use snake_case for node IDs\n- Reuse nodes across multiple relations if they appear repeatedly\n- Always include evidence (verbatim sentence excerpt)\n- Confidence defaults to 0.9, lower to 0.7 if ambiguous\n- Set node size to 1.0 (default)\n\nSentence: \"{sentence}\"\n\nOutput format:\n{{\n  \"nodes\": [\n    {{\n      \"id\": \"snake_case_id\",\n      \"label\": \"Entity Text\",\n      \"type\": \"ENTITY_TYPE\",\n      \"confidence\": 0.9,\n      \"size\": 1.0,\n      \"metadata\": {{}}\n    }}\n  ],\n  \"links\": [\n    {{\n      \"source\": \"source_node_id\",\n      \"target\": \"target_node_id\",\n      \"type\": \"RELATION_TYPE\",\n      \"evidence\": \"verbatim sentence excerpt\"\n    }}\n  ]\n}}",
+    "few_shot_examples": [
+      {
+        "sentence": "Taura Syndrome Virus (TSV) causes acute mortality in juvenile Penaeus vannamei.",
+        "output": {
+          "nodes": [
+            {"id": "tsv", "label": "Taura Syndrome Virus", "type": "PATHOGEN", "confidence": 0.9, "size": 1.0, "metadata": {}},
+            {"id": "acute_mortality", "label": "acute mortality", "type": "CLINICAL_SYMPTOM", "confidence": 0.9, "size": 1.0, "metadata": {}},
+            {"id": "juvenile_penaeus_vannamei", "label": "juvenile Penaeus vannamei", "type": "LIFE_STAGE", "confidence": 0.9, "size": 1.0, "metadata": {}}
+          ],
+          "links": [
+            {"source": "tsv", "target": "acute_mortality", "type": "CAUSES", "evidence": "Taura Syndrome Virus (TSV) causes acute mortality"},
+            {"source": "tsv", "target": "juvenile_penaeus_vannamei", "type": "AFFECTS", "evidence": "causes acute mortality in juvenile Penaeus vannamei"}
+          ]
+        }
+      },
+      {
+        "sentence": "WSSV was detected by PCR in hepatopancreas tissue samples from infected shrimp.",
+        "output": {
+          "nodes": [
+            {"id": "wssv", "label": "WSSV", "type": "PATHOGEN", "confidence": 0.9, "size": 1.0, "metadata": {}},
+            {"id": "pcr", "label": "PCR", "type": "TEST_TYPE", "confidence": 0.9, "size": 1.0, "metadata": {}},
+            {"id": "hepatopancreas_tissue", "label": "hepatopancreas tissue", "type": "TISSUE", "confidence": 0.9, "size": 1.0, "metadata": {}},
+            {"id": "tissue_samples", "label": "tissue samples", "type": "SAMPLE", "confidence": 0.8, "size": 1.0, "metadata": {}},
+            {"id": "shrimp", "label": "shrimp", "type": "SPECIES", "confidence": 0.8, "size": 1.0, "metadata": {}}
+          ],
+          "links": [
+            {"source": "wssv", "target": "pcr", "type": "DETECTED_BY", "evidence": "WSSV was detected by PCR"},
+            {"source": "wssv", "target": "hepatopancreas_tissue", "type": "ENRICHED_IN", "evidence": "detected by PCR in hepatopancreas tissue"},
+            {"source": "tissue_samples", "target": "hepatopancreas_tissue", "type": "CARRIES", "evidence": "hepatopancreas tissue samples"},
+            {"source": "shrimp", "target": "wssv", "type": "CARRIES", "evidence": "samples from infected shrimp"}
+          ]
+        }
+      }
+    ],
+    "temperature": 0.1,
+    "max_tokens": 800
+  },
+
   "topic_suggestion": {
     "system_prompt": "You are an expert at classifying shrimp aquaculture text into research topics with enhanced keyword matching.",
     "main_prompt": "Classify this text into relevant topics from this list:\n- T_DISEASE: Disease & Pathology (disease, pathogen, mortality, syndrome, infection, outbreak, symptom, diagnosis)\n- T_TREATMENT: Treatment & Therapeutics (treatment, antibiotic, probiotic, therapy, medication, drug, efficacy)\n- T_GENETICS: Genetics & Breeding (gene, breeding, selection, heritability, QTL, SNP, genomics, trait)\n- T_MANAGEMENT: Farm Management (management, husbandry, stocking, harvest, production, farming, practice)\n- T_ENVIRONMENT: Environmental Parameters (water quality, temperature, salinity, oxygen, pH, ammonia, environment)\n- T_REPRODUCTION: Reproduction & Hatchery (spawning, larvae, maturation, broodstock, hatchery, nauplii, reproduction)\n- T_NUTRITION: Nutrition & Feed (feed, nutrition, protein, lipid, vitamin, FCR, diet, feeding)\n- T_BIOSECURITY: Biosecurity & Prevention (biosecurity, prevention, quarantine, disinfection, SPF, exclusion, control)\n- T_ECONOMICS: Economics & Markets (cost, price, market, profit, economics, trade, value, export)\n- T_DIAGNOSTICS: Diagnostics & Detection (PCR, diagnosis, detection, screening, test, assay, identification, monitoring)\n\nDocument title: \"{title}\"\nText: \"{text}\"\n\nReturn 1-3 most relevant topics with confidence scores and justification keywords.\n\nOutput format:\n{{\"topics\": [{{\"topic_id\": \"T_...\", \"score\": 0.0-1.0, \"keywords\": [\"keyword1\", \"keyword2\"]}}]}}",
