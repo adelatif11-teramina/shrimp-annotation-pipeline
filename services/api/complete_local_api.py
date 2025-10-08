@@ -956,7 +956,8 @@ async def export_annotations(
     
     db = get_session()
     try:
-        query = db.query(GoldAnnotation)
+        # Filter only accepted annotations
+        query = db.query(GoldAnnotation).filter(GoldAnnotation.decision == "accept")
         
         # Date filtering
         if date_from:
@@ -968,18 +969,34 @@ async def export_annotations(
         
         export_data = []
         for ann in annotations:
+            # Get sentence text from the Sentence table
+            sentence = db.query(Sentence).filter(
+                Sentence.doc_id == ann.doc_id,
+                Sentence.sent_id == ann.sent_id
+            ).first()
+            
             export_data.append({
-                "annotation_id": ann.id,
-                "doc_id": ann.doc_id,
-                "sent_id": ann.sent_id,
+                "id": ann.id,
+                "item_id": ann.candidate_id,
+                "user_id": ann.user_id,
+                "decision": ann.decision,
                 "entities": ann.entities,
                 "relations": ann.relations,
                 "topics": ann.topics,
-                "decision": ann.decision,
                 "confidence": ann.confidence,
-                "annotator": current_user["username"],  # Would get from user table in production
+                "notes": ann.notes,
                 "created_at": ann.created_at.isoformat(),
-                "notes": ann.notes
+                "doc_id": ann.doc_id,
+                "sent_id": ann.sent_id,
+                "document_title": "",  # Would need to get from Document table
+                "priority_score": 0.0,  # Would need to get from TriageItem table
+                "time_spent": ann.time_spent or 0,
+                "source": "manual",
+                "sentence_preview": sentence.text[:100] + "..." if sentence and len(sentence.text) > 100 else (sentence.text if sentence else ""),
+                "entity_count": len(ann.entities) if ann.entities else 0,
+                "relation_count": len(ann.relations) if ann.relations else 0,
+                "topic_count": len(ann.topics) if ann.topics else 0,
+                "time_spent_formatted": f"{ann.time_spent or 0} seconds"
             })
         
         if format == "jsonl":
@@ -1003,10 +1020,17 @@ async def export_annotations(
             )
         else:
             return {
-                "data": export_data,
-                "count": len(export_data),
-                "format": format,
-                "exported_at": datetime.utcnow().isoformat()
+                "metadata": {
+                    "export_timestamp": datetime.utcnow().isoformat(),
+                    "total_annotations": len(export_data),
+                    "filters_applied": {
+                        "decision": "accept",
+                        "doc_id": None,
+                        "user_id": None
+                    },
+                    "format": format
+                },
+                "annotations": export_data
             }
     finally:
         db.close()
