@@ -176,6 +176,10 @@ def setup_logging(
         backup_count: Number of backup files to keep
     """
     
+    # Normalize level
+    if isinstance(level, str):
+        level = level.upper()
+
     # Create logs directory if needed
     if log_file:
         log_path = Path(log_file)

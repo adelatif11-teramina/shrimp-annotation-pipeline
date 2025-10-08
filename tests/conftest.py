@@ -84,7 +84,7 @@ def db_session(test_db) -> Generator[Session, None, None]:
         session.close()
 
 @pytest.fixture
-def test_client(mock_settings):
+def test_client(mock_settings, mock_monitoring, disable_psutil):
     """Create FastAPI test client"""
     from services.api.annotation_api import app
     
@@ -210,3 +210,69 @@ def mock_redis(monkeypatch):
     mock_redis_instance = MockRedis()
     monkeypatch.setattr("redis.Redis", lambda **kwargs: mock_redis_instance)
     return mock_redis_instance
+
+@pytest.fixture
+def mock_monitoring(monkeypatch):
+    """Mock monitoring components to prevent psutil issues in tests"""
+    
+    class MockApplicationMonitor:
+        def __init__(self, *args, **kwargs):
+            pass
+        
+        async def start_monitoring(self, interval=60):
+            pass
+        
+        async def stop_monitoring(self):
+            pass
+        
+        def metrics(self):
+            return MockMetricsCollector()
+    
+    class MockMetricsCollector:
+        def increment_counter(self, *args, **kwargs):
+            pass
+        
+        def set_gauge(self, *args, **kwargs):
+            pass
+        
+        def observe_histogram(self, *args, **kwargs):
+            pass
+    
+    # Mock the monitoring module
+    monkeypatch.setattr("utils.monitoring.ApplicationMonitor", MockApplicationMonitor)
+    monkeypatch.setattr("utils.monitoring.monitor", MockApplicationMonitor())
+    
+    return MockApplicationMonitor()
+
+@pytest.fixture
+def disable_psutil(monkeypatch):
+    """Disable psutil to prevent floating point exceptions in tests"""
+    
+    class MockProcess:
+        def cpu_percent(self, interval=None):
+            return 10.0
+    
+    class MockVirtualMemory:
+        percent = 50.0
+    
+    class MockDiskUsage:
+        used = 1000000
+        total = 10000000
+    
+    def mock_cpu_percent(interval=None):
+        return 10.0
+    
+    def mock_virtual_memory():
+        return MockVirtualMemory()
+    
+    def mock_disk_usage(path):
+        return MockDiskUsage()
+    
+    def mock_getloadavg():
+        return [0.5, 0.6, 0.7]
+    
+    # Mock psutil functions that can cause floating point exceptions
+    monkeypatch.setattr("psutil.cpu_percent", mock_cpu_percent)
+    monkeypatch.setattr("psutil.virtual_memory", mock_virtual_memory)
+    monkeypatch.setattr("psutil.disk_usage", mock_disk_usage)
+    monkeypatch.setattr("psutil.getloadavg", mock_getloadavg)

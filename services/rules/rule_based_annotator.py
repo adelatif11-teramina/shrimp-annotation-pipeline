@@ -548,6 +548,14 @@ class ShimpAquacultureRuleEngine:
         
         return result
 
+    def get_statistics(self) -> Dict[str, Any]:
+        """Expose aggregated rule engine statistics"""
+        return {
+            "entities_matched": self.stats.get("entities_matched", 0),
+            "relations_matched": self.stats.get("relations_matched", 0),
+            "rules_fired": dict(self.stats.get("rules_fired", {}))
+        }
+
 
 # CLI interface for testing
 if __name__ == "__main__":

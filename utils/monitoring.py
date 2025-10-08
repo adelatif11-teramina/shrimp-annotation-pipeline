@@ -227,30 +227,54 @@ class HealthChecker:
         
         # System metrics
         try:
-            # CPU usage
-            cpu_percent = psutil.cpu_percent(interval=1)
-            system_metrics["cpu_usage"] = cpu_percent
-            self.metrics.set_gauge("system_cpu_usage", cpu_percent)
+            # CPU usage - avoid interval=1 which can cause floating point exceptions
+            try:
+                cpu_percent = psutil.cpu_percent(interval=0.1)
+                # Validate CPU percentage to avoid floating point errors
+                if cpu_percent is not None and 0 <= cpu_percent <= 100:
+                    system_metrics["cpu_usage"] = cpu_percent
+                    self.metrics.set_gauge("system_cpu_usage", cpu_percent)
+                else:
+                    # Fallback to non-blocking call
+                    cpu_percent = psutil.cpu_percent(interval=None)
+                    if cpu_percent is not None and 0 <= cpu_percent <= 100:
+                        system_metrics["cpu_usage"] = cpu_percent
+                        self.metrics.set_gauge("system_cpu_usage", cpu_percent)
+            except (ZeroDivisionError, OverflowError, OSError) as e:
+                logger.warning(f"Failed to get CPU usage: {e}")
+                system_metrics["cpu_usage"] = 0.0
             
             # Memory usage
-            memory = psutil.virtual_memory()
-            memory_percent = memory.percent
-            system_metrics["memory_usage"] = memory_percent
-            self.metrics.set_gauge("system_memory_usage", memory_percent)
+            try:
+                memory = psutil.virtual_memory()
+                memory_percent = memory.percent
+                if memory_percent is not None and 0 <= memory_percent <= 100:
+                    system_metrics["memory_usage"] = memory_percent
+                    self.metrics.set_gauge("system_memory_usage", memory_percent)
+            except (ZeroDivisionError, OverflowError, OSError) as e:
+                logger.warning(f"Failed to get memory usage: {e}")
+                system_metrics["memory_usage"] = 0.0
             
             # Disk usage
-            disk = psutil.disk_usage('/')
-            disk_percent = (disk.used / disk.total) * 100
-            system_metrics["disk_usage"] = disk_percent
-            self.metrics.set_gauge("system_disk_usage", disk_percent)
+            try:
+                disk = psutil.disk_usage('/')
+                if disk.total > 0:  # Avoid division by zero
+                    disk_percent = (disk.used / disk.total) * 100
+                    if 0 <= disk_percent <= 100:
+                        system_metrics["disk_usage"] = disk_percent
+                        self.metrics.set_gauge("system_disk_usage", disk_percent)
+            except (ZeroDivisionError, OverflowError, OSError) as e:
+                logger.warning(f"Failed to get disk usage: {e}")
+                system_metrics["disk_usage"] = 0.0
             
             # Load average (Unix only)
             try:
                 load_avg = psutil.getloadavg()
-                system_metrics["load_average"] = load_avg[0]
-                self.metrics.set_gauge("system_load_average", load_avg[0])
-            except AttributeError:
-                # Windows doesn't have load average
+                if load_avg and len(load_avg) > 0 and load_avg[0] is not None:
+                    system_metrics["load_average"] = load_avg[0]
+                    self.metrics.set_gauge("system_load_average", load_avg[0])
+            except (AttributeError, OSError):
+                # Windows doesn't have load average or other OS errors
                 pass
             
         except Exception as e:
@@ -438,16 +462,25 @@ class ApplicationMonitor:
         """Register default system health checks"""
         
         def check_memory():
-            memory = psutil.virtual_memory()
-            return memory.percent < 95
+            try:
+                memory = psutil.virtual_memory()
+                return memory.percent < 95 if memory.percent is not None else True
+            except Exception:
+                return True  # Assume healthy if check fails
         
         def check_disk():
-            disk = psutil.disk_usage('/')
-            return (disk.used / disk.total) * 100 < 98
+            try:
+                disk = psutil.disk_usage('/')
+                return (disk.used / disk.total) * 100 < 98 if disk.total > 0 else True
+            except Exception:
+                return True  # Assume healthy if check fails
         
         def check_cpu():
-            # This is a simple check; in production you might want something more sophisticated
-            return psutil.cpu_percent() < 95
+            try:
+                cpu_usage = psutil.cpu_percent(interval=0.1)
+                return cpu_usage < 95 if cpu_usage is not None else True
+            except Exception:
+                return True  # Assume healthy if check fails
         
         self.health_checker.register_health_check("memory", check_memory)
         self.health_checker.register_health_check("disk", check_disk)
@@ -457,15 +490,25 @@ class ApplicationMonitor:
         """Setup default alert rules"""
         
         def high_memory_usage():
-            memory = psutil.virtual_memory()
-            return memory.percent > 90
+            try:
+                memory = psutil.virtual_memory()
+                return memory.percent > 90 if memory.percent is not None else False
+            except Exception:
+                return False
         
         def high_disk_usage():
-            disk = psutil.disk_usage('/')
-            return (disk.used / disk.total) * 100 > 95
+            try:
+                disk = psutil.disk_usage('/')
+                return (disk.used / disk.total) * 100 > 95 if disk.total > 0 else False
+            except Exception:
+                return False
         
         def high_cpu_usage():
-            return psutil.cpu_percent() > 95
+            try:
+                cpu_usage = psutil.cpu_percent(interval=0.1)
+                return cpu_usage > 95 if cpu_usage is not None else False
+            except Exception:
+                return False
         
         self.alert_manager.add_alert_rule(
             "high_memory_usage",

@@ -102,21 +102,21 @@ class Settings(BaseSettings):
     sentry_dsn: Optional[str] = Field(None, env="SENTRY_DSN")
     datadog_api_key: Optional[str] = Field(None, env="DATADOG_API_KEY")
     
-    @validator("environment")
+    @validator("environment", allow_reuse=True)
     def validate_environment(cls, v):
-        allowed = ["development", "staging", "production"]
+        allowed = ["development", "staging", "production", "testing"]
         if v not in allowed:
             raise ValueError(f"Environment must be one of {allowed}")
         return v
     
-    @validator("log_level")
+    @validator("log_level", allow_reuse=True)
     def validate_log_level(cls, v):
         allowed = ["debug", "info", "warning", "error", "critical"]
         if v.lower() not in allowed:
             raise ValueError(f"Log level must be one of {allowed}")
         return v.lower()
     
-    @validator("data_dir", "cache_dir", "export_dir", "log_dir", pre=True)
+    @validator("data_dir", "cache_dir", "export_dir", "log_dir", pre=True, allow_reuse=True)
     def resolve_path(cls, v):
         if isinstance(v, str):
             return Path(v).resolve()

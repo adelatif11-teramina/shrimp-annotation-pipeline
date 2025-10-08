@@ -164,11 +164,13 @@ class DocumentIngestionService:
         
         try:
             # Create prompt for text cleaning
-            prompt = f"""You are an expert text processor for scientific literature in aquaculture and marine biology. 
+            truncated = text[:4000]
+            was_truncated = len(text) > 4000
+            prompt = f"""You are an expert text processor for scientific literature in aquaculture and marine biology.
 
 Your task is to clean the following document by:
 1. REMOVE: References/bibliography sections
-2. REMOVE: Author affiliations and contact information  
+2. REMOVE: Author affiliations and contact information
 3. REMOVE: Copyright notices and journal metadata
 4. REMOVE: Figure/table captions that don't contain scientific content
 5. REMOVE: Headers, footers, page numbers
@@ -181,10 +183,11 @@ Your task is to clean the following document by:
 
 Document title: {title or "Unknown"}
 
-Original text:
-{text[:4000]}{"..." if len(text) > 4000 else ""}
+<ORIGINAL_TEXT truncated="{str(was_truncated).lower()}">
+{truncated}
+</ORIGINAL_TEXT>
 
-Return ONLY the cleaned text without any explanations or metadata. Preserve paragraph structure with double newlines."""
+Return ONLY the cleaned text (no commentary), preserving paragraph breaks."""
 
             from openai import OpenAI
             client = OpenAI(api_key=openai.api_key)

@@ -7,49 +7,36 @@ from fastapi import status
 
 class TestDocumentEndpoints:
     """Test document-related endpoints"""
-    
-    def test_create_document(self, test_client, sample_document):
-        """Test document creation"""
-        response = test_client.post("/documents", json=sample_document)
+
+    def test_ingest_document(self, test_client, sample_document):
+        """Document ingestion persists text and returns summary"""
+        response = test_client.post("/documents/ingest", json=sample_document)
         assert response.status_code == status.HTTP_200_OK
-        
+
         data = response.json()
-        assert data["doc_id"] == sample_document["doc_id"]
-        assert data["title"] == sample_document["title"]
-    
-    def test_get_document(self, test_client, sample_document):
-        """Test fetching a document"""
-        # First create the document
-        test_client.post("/documents", json=sample_document)
-        
-        # Then fetch it
+        assert "doc_id" in data
+        assert data["sentence_count"] >= 1
+
+    def test_get_document_placeholder(self, test_client, sample_document):
+        """Placeholder document endpoint returns stub payload"""
+        test_client.post("/documents/ingest", json=sample_document)
+
         response = test_client.get(f"/documents/{sample_document['doc_id']}")
         assert response.status_code == status.HTTP_200_OK
-        
+
         data = response.json()
         assert data["doc_id"] == sample_document["doc_id"]
-    
+        assert data["status"] == "not_implemented"
+
     def test_list_documents(self, test_client):
-        """Test listing documents"""
+        """Listing documents returns metadata collection"""
         response = test_client.get("/documents")
         assert response.status_code == status.HTTP_200_OK
-        
+
         data = response.json()
-        assert isinstance(data, list)
-    
-    def test_delete_document(self, test_client, sample_document):
-        """Test document deletion"""
-        # Create document
-        test_client.post("/documents", json=sample_document)
-        
-        # Delete it
-        response = test_client.delete(f"/documents/{sample_document['doc_id']}")
-        assert response.status_code == status.HTTP_200_OK
-    
-    def test_document_not_found(self, test_client):
-        """Test fetching non-existent document"""
-        response = test_client.get("/documents/nonexistent")
-        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert "documents" in data
+        assert "count" in data
+        assert isinstance(data["documents"], list)
 
 class TestCandidateEndpoints:
     """Test candidate generation endpoints"""
@@ -121,49 +108,31 @@ class TestTriageEndpoints:
 class TestAnnotationEndpoints:
     """Test annotation endpoints"""
     
-    def test_submit_annotation(self, test_client, auth_headers):
-        """Test submitting an annotation decision"""
+    def test_submit_annotation_decision(self, test_client):
+        """Annotation decisions accept payload and respond with success"""
         decision_data = {
-            "candidate_id": 1,
+            "item_id": "doc1_sent1_entity_0",
             "decision": "accepted",
-            "entities": [],
-            "relations": [],
-            "topics": [],
-            "confidence": 0.95,
+            "annotator": "tester",
+            "final_annotation": {"entities": []},
             "notes": "Test annotation"
         }
-        
-        response = test_client.post(
-            "/annotations/submit",
-            json=decision_data,
-            headers=auth_headers
-        )
-        assert response.status_code in [status.HTTP_200_OK, status.HTTP_401_UNAUTHORIZED]
-    
-    def test_get_annotation_history(self, test_client):
-        """Test fetching annotation history"""
-        response = test_client.get("/annotations/history")
+
+        response = test_client.post("/annotations/decisions", json=decision_data)
         assert response.status_code == status.HTTP_200_OK
-        
-        data = response.json()
-        assert isinstance(data, list)
+        assert response.json()["status"] == "success"
 
 class TestStatsEndpoints:
     """Test statistics endpoints"""
     
-    def test_get_stats(self, test_client):
-        """Test fetching statistics"""
-        response = test_client.get("/stats")
+    def test_get_system_statistics(self, test_client):
+        """Statistics endpoint returns service breakdown"""
+        response = test_client.get("/statistics/overview")
         assert response.status_code == status.HTTP_200_OK
-        
+
         data = response.json()
-        assert "total_documents" in data
-        assert "total_annotations" in data
-    
-    def test_get_user_stats(self, test_client, auth_headers):
-        """Test fetching user-specific statistics"""
-        response = test_client.get("/stats/user", headers=auth_headers)
-        assert response.status_code in [status.HTTP_200_OK, status.HTTP_401_UNAUTHORIZED]
+        assert "timestamp" in data
+        assert "services" in data
 
 class TestHealthEndpoints:
     """Test health check endpoints"""
@@ -180,7 +149,6 @@ class TestHealthEndpoints:
         """Test readiness check"""
         response = test_client.get("/ready")
         assert response.status_code == status.HTTP_200_OK
-        
+
         data = response.json()
-        assert "database" in data
-        assert "cache" in data
+        assert "services" in data

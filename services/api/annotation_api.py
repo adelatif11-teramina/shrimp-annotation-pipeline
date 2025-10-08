@@ -206,19 +206,6 @@ if ui_build_path.exists():
         if index_file.exists():
             return FileResponse(str(index_file))
         return {"message": "🦐 Shrimp Annotation Pipeline API", "frontend": "not_built"}
-    
-    @app.get("/{full_path:path}")
-    async def serve_frontend_routes(full_path: str):
-        """Serve React frontend for all non-API routes"""
-        # Skip API routes
-        if full_path.startswith(("health", "docs", "openapi", "candidates", "documents", "statistics", "auth")):
-            raise HTTPException(status_code=404, detail="API endpoint not found")
-        
-        # Serve index.html for frontend routes
-        index_file = ui_build_path / "index.html"
-        if index_file.exists():
-            return FileResponse(str(index_file))
-        raise HTTPException(status_code=404, detail="Frontend not available")
 else:
     @app.get("/")
     async def api_root():
@@ -261,12 +248,18 @@ async def startup_event():
     
     # Initialize LLM generator (will need API key from environment)
     try:
-        llm_generator = LLMCandidateGenerator(
-            provider="openai",
-            model="gpt-4o-mini",
-            cache_dir=pipeline_root / "data/candidates/.cache"
-        )
-        logger.info("✓ LLM candidate generator initialized")
+        llm_provider = "openai" if settings.openai_api_key else "ollama"
+        llm_kwargs: Dict[str, Any] = {
+            "provider": llm_provider,
+            "model": settings.openai_model if llm_provider == "openai" else settings.ollama_model,
+            "cache_dir": pipeline_root / "data/candidates/.cache"
+        }
+
+        if llm_provider == "openai":
+            llm_kwargs["api_key"] = settings.openai_api_key
+
+        llm_generator = LLMCandidateGenerator(**llm_kwargs)
+        logger.info("✓ LLM candidate generator initialized (%s)", llm_provider)
     except Exception as e:
         logger.warning(f"LLM generator initialization failed: {e}")
         llm_generator = None
@@ -505,55 +498,59 @@ async def generate_candidates(
                     tokens_used=llm_result.get("token_usage")
                 )
         
-        # Generate rule-based candidates
-        rule_result = rule_engine.process_sentence(
-            sentence_request.doc_id,
-            sentence_request.sent_id,
-            sentence_request.text
-        )
-        
-        # Calculate triage score if triage engine available
-        triage_score = None
-        if triage_engine:
-            doc_metadata = {
-                "doc_id": sentence_request.doc_id,
-                "sent_id": sentence_request.sent_id,
-                "source": "manual"
-            }
-            
-            # Add candidates to triage (this will calculate scores)
-            triage_engine.add_candidates(
-                llm_result["candidates"],
-                doc_metadata,
-                rule_result["rule_results"]
+            # Generate rule-based candidates
+            rule_result = rule_engine.process_sentence(
+                sentence_request.doc_id,
+                sentence_request.sent_id,
+                sentence_request.text
             )
             
-            # Get the latest triage score
-            if triage_engine.queue:
-                triage_score = triage_engine.queue[-1].priority_score
+            # Calculate triage score if triage engine available
+            triage_score = None
+            if triage_engine:
+                doc_metadata = {
+                    "doc_id": sentence_request.doc_id,
+                    "sent_id": sentence_request.sent_id,
+                    "source": "manual"
+                }
+                
+                # Add candidates to triage (this will calculate scores)
+                triage_engine.add_candidates(
+                    llm_result["candidates"],
+                    doc_metadata,
+                    rule_result
+                )
+                
+                # Get the latest triage score
+                if triage_engine.queue:
+                    triage_score = triage_engine.queue[-1].priority_score
+            
+            processing_time = (datetime.now() - start_time).total_seconds()
+            
+            return CandidateResponse(
+                doc_id=sentence_request.doc_id,
+                sent_id=sentence_request.sent_id,
+                candidates=llm_result["candidates"],
+                rule_results={
+                    "entities": rule_result.get("entities", []),
+                    "relations": rule_result.get("relations", []),
+                    "topics": rule_result.get("topics", [])
+                },
+                triage_score=triage_score,
+                processing_time=processing_time
+            )
         
-        processing_time = (datetime.now() - start_time).total_seconds()
-        
-        return CandidateResponse(
-            doc_id=sentence_request.doc_id,
-            sent_id=sentence_request.sent_id,
-            candidates=llm_result["candidates"],
-            rule_results=rule_result["rule_results"],
-            triage_score=triage_score,
-            processing_time=processing_time
-        )
-        
-    except Exception as e:
-        from utils.error_handling import error_handler
-        error_response = error_handler.handle_api_error(e, {
-            "endpoint": "/candidates/generate",
-            "doc_id": sentence_request.doc_id,
-            "sent_id": sentence_request.sent_id
-        })
-        raise HTTPException(
-            status_code=error_response["status_code"],
-            detail=error_response["response"]
-        )
+        except Exception as e:
+            from utils.error_handling import error_handler
+            error_response = error_handler.handle_api_error(e, {
+                "endpoint": "/candidates/generate",
+                "doc_id": sentence_request.doc_id,
+                "sent_id": sentence_request.sent_id
+            })
+            raise HTTPException(
+                status_code=error_response["status_code"],
+                detail=error_response["response"]
+            )
 
 @app.post("/candidates/batch")
 async def generate_batch_candidates(batch_request: BatchSentenceRequest) -> List[CandidateResponse]:
@@ -950,7 +947,7 @@ async def populate_triage_queue() -> Dict[str, Any]:
                     # Create candidate data
                     candidates = {
                         "text": sentence.text,
-                        "entities": rule_result.get("rule_results", {}).get("entities", [])
+                        "entities": rule_result.get("entities", [])
                     }
                     
                     doc_metadata = {
@@ -964,7 +961,11 @@ async def populate_triage_queue() -> Dict[str, Any]:
                     triage_engine.add_candidates(
                         candidates,
                         doc_metadata,
-                        rule_result.get("rule_results")
+                        {
+                            "entities": rule_result.get("entities", []),
+                            "relations": rule_result.get("relations", []),
+                            "topics": rule_result.get("topics", [])
+                        }
                     )
                     total_candidates += 1
                     
@@ -1010,6 +1011,16 @@ async def get_system_statistics() -> Dict[str, Any]:
         stats["gold_annotations"] = 0
     
     return stats
+
+if ui_build_path.exists():
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_frontend_routes(full_path: str):
+        """Serve React frontend for unmatched non-API routes"""
+        # Serve index.html for frontend routes
+        index_file = ui_build_path / "index.html"
+        if index_file.exists():
+            return FileResponse(str(index_file))
+        raise HTTPException(status_code=404, detail="Frontend not available")
 
 if __name__ == "__main__":
     # Development server
