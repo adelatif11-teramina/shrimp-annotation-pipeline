@@ -67,64 +67,102 @@ try:
             logger.error(f"Error saving draft: {e}")
             raise HTTPException(status_code=500, detail=str(e))
     
-    # Add fallback triplet endpoint if OpenAI key not available
-    if not openai_key:
-        @app.post("/api/candidates")
-        async def generate_candidates_fallback(request: Dict[str, Any]):
-            """Fallback candidates endpoint with mock triplets when OpenAI unavailable"""
-            logger.info("🔄 Using fallback mock triplet generation (set OPENAI_API_KEY for real AI)")
+    # Add API endpoint mapping that frontend expects
+    @app.post("/api/candidates/generate")
+    async def api_candidates_generate(request: Dict[str, Any]):
+        """API endpoint that frontend calls - forward to main candidates endpoint"""
+        logger.info("🔗 Frontend API call received, forwarding to main candidates endpoint")
+        
+        # Import the main function from annotation API
+        from services.api.annotation_api import generate_candidates
+        from pydantic import BaseModel
+        from typing import Optional
+        
+        # Convert request to proper format
+        class SentenceRequest(BaseModel):
+            doc_id: str
+            sent_id: str
+            text: str
+            title: Optional[str] = None
+        
+        try:
+            sentence_request = SentenceRequest(**request)
+            # Call the main candidates function with mock user
+            result = await generate_candidates(sentence_request, current_user=None)
+            return result
+        except Exception as e:
+            logger.error(f"Error in API candidates generate: {e}")
+            # Fallback to mock if main API fails
+            return await generate_candidates_fallback_impl(request)
+    
+    # Fallback implementation for when main API fails
+    async def generate_candidates_fallback_impl(request: Dict[str, Any]):
+        """Fallback candidates endpoint with mock triplets when main API unavailable"""
+        logger.info("🔄 Using fallback mock triplet generation")
+        
+        # Generate mock triplet based on sentence content
+        sentence = request.get("text", "")
+        mock_triplets = []
+        
+        # Simple keyword-based mock triplet generation
+        if "vibrio" in sentence.lower() or "wssv" in sentence.lower() or "virus" in sentence.lower():
+            mock_triplets.append({
+                "triplet_id": "mock_t1",
+                "head": {"text": "WSSV", "type": "PATHOGEN", "node_id": "wssv"},
+                "relation": "CAUSES",
+                "tail": {"text": "AHPND", "type": "DISEASE", "node_id": "ahpnd"},
+                "evidence": "WSSV causes AHPND",
+                "confidence": 0.7,
+                "audit": {"status": "mock", "confidence": 0.7},
+                "rule_support": False,
+                "rule_sources": []
+            })
+        
+        if "shrimp" in sentence.lower() or "penaeus" in sentence.lower():
+            mock_triplets.append({
+                "triplet_id": "mock_t2", 
+                "head": {"text": "WSSV", "type": "PATHOGEN", "node_id": "wssv"},
+                "relation": "AFFECTS",
+                "tail": {"text": "Penaeus vannamei", "type": "SPECIES", "node_id": "penaeus_vannamei"},
+                "evidence": "WSSV affects Penaeus vannamei",
+                "confidence": 0.7,
+                "audit": {"status": "mock", "confidence": 0.7},
+                "rule_support": False,
+                "rule_sources": []
+            })
+        
+        if "pcr" in sentence.lower() or "detection" in sentence.lower():
+            mock_triplets.append({
+                "triplet_id": "mock_t3",
+                "head": {"text": "PCR screening", "type": "TEST_TYPE", "node_id": "pcr"},
+                "relation": "DETECTS",
+                "tail": {"text": "WSSV", "type": "PATHOGEN", "node_id": "wssv"},
+                "evidence": "PCR screening detects WSSV",
+                "confidence": 0.8,
+                "audit": {"status": "mock", "confidence": 0.8},
+                "rule_support": False,
+                "rule_sources": []
+            })
             
-            # Generate mock triplet based on sentence content
-            sentence = request.get("text", "")
-            mock_triplets = []
-            
-            # Simple keyword-based mock triplet generation
-            if "vibrio" in sentence.lower():
-                mock_triplets.append({
-                    "triplet_id": "mock_t1",
-                    "head": {"text": "Vibrio", "type": "PATHOGEN", "node_id": "vibrio"},
-                    "relation": "CAUSES",
-                    "tail": {"text": "disease", "type": "DISEASE", "node_id": "disease"},
-                    "evidence": "Vibrio causes disease",
-                    "confidence": 0.7,
-                    "audit": {"status": "mock", "confidence": 0.7},
-                    "rule_support": False,
-                    "rule_sources": []
-                })
-            
-            if "shrimp" in sentence.lower() or "penaeus" in sentence.lower():
-                mock_triplets.append({
-                    "triplet_id": "mock_t2", 
-                    "head": {"text": "pathogen", "type": "PATHOGEN", "node_id": "pathogen"},
-                    "relation": "AFFECTS",
-                    "tail": {"text": "shrimp", "type": "SPECIES", "node_id": "shrimp"},
-                    "evidence": "pathogen affects shrimp",
-                    "confidence": 0.7,
-                    "audit": {"status": "mock", "confidence": 0.7},
-                    "rule_support": False,
-                    "rule_sources": []
-                })
-                
-            return {
-                "candidates": {
-                    "entities": [],
-                    "relations": [],
-                    "topics": [],
-                    "triplets": mock_triplets,
-                    "metadata": {
-                        "audit_overall_verdict": "mock",
-                        "audit_notes": "Mock triplets generated - Set OPENAI_API_KEY for real AI triplets"
-                    }
-                },
-                "triage_score": 0.5,
-                "processing_time": 0.1,
-                "model_info": {
-                    "provider": "mock",
-                    "model": "fallback",
-                    "api_available": False,
-                    "instructions": "Set OPENAI_API_KEY environment variable in Railway for real AI generation"
+        return {
+            "candidates": {
+                "entities": [],
+                "relations": [],
+                "topics": [],
+                "triplets": mock_triplets,
+                "metadata": {
+                    "audit_overall_verdict": "mock",
+                    "audit_notes": "Mock triplets generated - OpenAI API may be unavailable"
                 }
+            },
+            "triage_score": 0.5,
+            "processing_time": 0.1,
+            "model_info": {
+                "provider": "mock",
+                "model": "fallback",
+                "api_available": False
             }
+        }
     
     # Enhance WebSocket authentication for anonymous users
     from services.api.annotation_api import websocket_endpoint
