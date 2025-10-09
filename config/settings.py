@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     
     # OpenAI
     openai_api_key: Optional[str] = Field(None, env="OPENAI_API_KEY")
-    openai_model: str = Field("gpt-5", env="OPENAI_MODEL")
+    openai_model: str = Field("gpt-4o", env="OPENAI_MODEL")
     openai_temperature: float = Field(0.1, env="OPENAI_TEMPERATURE")
     
     # Ollama

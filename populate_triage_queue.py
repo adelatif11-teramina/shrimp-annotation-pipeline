@@ -48,7 +48,7 @@ async def populate_triage_queue(chunking_mode: str = "sentence"):
         if api_key:
             llm_generator = LLMCandidateGenerator(
                 provider="openai",
-                model="gpt-5",
+                model="gpt-4o",
                 api_key=api_key,
                 cache_dir=project_root / "data/candidates/.cache"
             )

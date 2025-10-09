@@ -519,7 +519,7 @@ async def generate_candidates(
 
                 log_llm_request(
                     provider="openai",
-                    model="gpt-5",
+                    model="gpt-4o",
                     duration=llm_duration,
                     tokens_used=None
                 )

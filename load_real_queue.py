@@ -65,7 +65,7 @@ async def load_real_sentences():
     
     llm_generator = LLMCandidateGenerator(
         provider="openai",
-        model="gpt-5",
+        model="gpt-4o",
         api_key=api_key,
         temperature=0.1,
         cache_dir=pipeline_root / "data/local/llm_cache"
