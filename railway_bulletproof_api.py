@@ -96,7 +96,7 @@ async def health():
         "mode": "bulletproof",
         "features": {
             "openai": openai_available,
-            "full_api": full_api_available or try_import_full_api()
+            "full_api": full_api_available  # Don't trigger import during health check
         }
     }
 

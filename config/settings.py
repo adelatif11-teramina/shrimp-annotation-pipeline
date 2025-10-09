@@ -171,8 +171,9 @@ def validate_required_settings():
     """Validate that all required settings are present"""
     errors = []
     
-    if not settings.db_password and settings.is_production:
-        errors.append("DB_PASSWORD is required in production")
+    # DB_PASSWORD is optional for Railway deployment
+    # if not settings.db_password and settings.is_production:
+    #     errors.append("DB_PASSWORD is required in production")
     
     if not settings.jwt_secret_key:
         errors.append("JWT_SECRET_KEY is required")
