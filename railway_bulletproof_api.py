@@ -25,7 +25,7 @@ logger.info(f"🚀 Bulletproof Railway API starting on port {port}")
 
 # Import FastAPI (this should always work)
 try:
-    from fastapi import FastAPI, HTTPException
+    from fastapi import FastAPI, HTTPException, WebSocket
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.staticfiles import StaticFiles
     from fastapi.responses import FileResponse
@@ -251,6 +251,108 @@ def generate_smart_mock_triplets(sentence: str) -> Dict[str, Any]:
             "sentence_length": len(sentence)
         }
     }
+
+# Triage queue endpoint
+@app.get("/api/triage/queue")
+async def get_triage_queue(
+    status: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0
+):
+    """Get triage queue items"""
+    logger.info(f"🎯 Triage queue requested: status={status}, sort_by={sort_by}, limit={limit}")
+    
+    # Mock triage items that match frontend expectations
+    mock_items = [
+        {
+            "item_id": 1,
+            "doc_id": "doc_1",
+            "sent_id": "sent_1",
+            "text": "White Spot Syndrome Virus (WSSV) is one of the most devastating pathogens affecting Pacific white shrimp (Penaeus vannamei) aquaculture worldwide.",
+            "priority_score": 0.95,
+            "confidence": 0.8,
+            "status": "pending",
+            "created_at": "2024-01-01T00:00:00Z",
+            "metadata": {"source": "demo"}
+        },
+        {
+            "item_id": 2,
+            "doc_id": "doc_2", 
+            "sent_id": "sent_2",
+            "text": "Early detection through PCR screening and implementation of biosecurity measures are critical for disease management.",
+            "priority_score": 0.87,
+            "confidence": 0.75,
+            "status": "pending",
+            "created_at": "2024-01-01T01:00:00Z",
+            "metadata": {"source": "demo"}
+        },
+        {
+            "item_id": 3,
+            "doc_id": "doc_3",
+            "sent_id": "sent_3", 
+            "text": "Vibrio parahaemolyticus causes acute hepatopancreatic necrosis disease and can result in mortality rates exceeding 80%.",
+            "priority_score": 0.82,
+            "confidence": 0.9,
+            "status": "pending",
+            "created_at": "2024-01-01T02:00:00Z",
+            "metadata": {"source": "demo"}
+        }
+    ]
+    
+    return {
+        "items": mock_items,
+        "total": len(mock_items),
+        "limit": limit,
+        "offset": offset,
+        "has_more": False
+    }
+
+# WebSocket endpoint
+@app.websocket("/ws/{user_id}")
+async def websocket_endpoint(websocket, user_id: str):
+    """WebSocket connection for real-time updates"""
+    logger.info(f"🔗 WebSocket connection from user: {user_id}")
+    
+    try:
+        await websocket.accept()
+        logger.info(f"✅ WebSocket connected: {user_id}")
+        
+        # Send welcome message
+        await websocket.send_json({
+            "type": "connection",
+            "status": "connected",
+            "user_id": user_id,
+            "timestamp": "2024-01-01T00:00:00Z"
+        })
+        
+        # Keep connection alive and handle messages
+        while True:
+            try:
+                data = await websocket.receive_json()
+                logger.info(f"📨 WebSocket message from {user_id}: {data.get('type', 'unknown')}")
+                
+                # Echo back with timestamp
+                await websocket.send_json({
+                    "type": "echo",
+                    "original": data,
+                    "timestamp": "2024-01-01T00:00:00Z"
+                })
+                
+            except Exception as msg_error:
+                logger.warning(f"⚠️ WebSocket message error for {user_id}: {msg_error}")
+                break
+                
+    except Exception as e:
+        logger.error(f"❌ WebSocket error for {user_id}: {e}")
+    finally:
+        logger.info(f"🔌 WebSocket disconnected: {user_id}")
+
+# Anonymous WebSocket fallback
+@app.websocket("/ws/anonymous")
+async def anonymous_websocket(websocket):
+    """Anonymous WebSocket connection"""
+    return await websocket_endpoint(websocket, "anonymous")
 
 # Draft annotations
 @app.post("/api/annotations/draft")
