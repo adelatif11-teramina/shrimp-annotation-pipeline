@@ -20,7 +20,7 @@ class TestLLMCandidateGenerator:
         """Create LLM generator instance for testing"""
         return LLMCandidateGenerator(
             provider="openai",
-            model="gpt-4o-mini",
+            model="gpt-5",
             api_key="test_key",
             temperature=0.1,
             cache_dir=temp_dir / "cache"
@@ -29,7 +29,7 @@ class TestLLMCandidateGenerator:
     def test_initialization(self, generator):
         """Test generator initialization"""
         assert generator.provider == "openai"
-        assert generator.model == "gpt-4o-mini"
+        assert generator.model == "gpt-5"
         assert generator.temperature == 0.1
         assert generator.cache_dir.exists()
     

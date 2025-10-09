@@ -270,7 +270,7 @@ class LLMCandidateGenerator:
     
     def __init__(self, 
                  provider: str = "openai",
-                 model: str = "gpt-4o-mini", 
+                 model: str = "gpt-5", 
                  api_key: Optional[str] = None,
                  temperature: float = 0.1,
                  cache_dir: Optional[Path] = None):
@@ -1013,7 +1013,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Generate LLM candidates")
     parser.add_argument("--provider", default="openai", choices=["openai", "ollama"])
-    parser.add_argument("--model", default="gpt-4o-mini")
+    parser.add_argument("--model", default="gpt-5")
     parser.add_argument("--api-key", help="OpenAI API key")
     parser.add_argument("--sentence", help="Test sentence")
     parser.add_argument("--input-file", help="JSONL file with sentences")

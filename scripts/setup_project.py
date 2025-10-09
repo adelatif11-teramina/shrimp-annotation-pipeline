@@ -136,7 +136,7 @@ source_authority:
 # LLM settings
 llm:
   provider: openai  # or ollama
-  model: gpt-4o-mini
+  model: gpt-5
   temperature: 0.1
   max_tokens: 500
   cache_enabled: true

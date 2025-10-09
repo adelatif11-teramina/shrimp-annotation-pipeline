@@ -47,7 +47,7 @@ def test_llm_candidate_generator():
         api_key = os.getenv('OPENAI_API_KEY')
         generator = LLMCandidateGenerator(
             provider="openai",
-            model="gpt-4o-mini",
+            model="gpt-5",
             api_key=api_key,
             temperature=0.1,
             cache_dir=pipeline_root / "data/local/llm_cache"
