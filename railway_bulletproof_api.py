@@ -59,14 +59,21 @@ if openai_key:
     except ImportError:
         logger.warning("⚠️ OpenAI import failed")
 
-# Check if full API is available
+# Check if full API is available (lazy import to avoid settings issues)
 full_api_available = False
-try:
-    from services.api.annotation_api import generate_candidates
-    full_api_available = True
-    logger.info("✅ Full annotation API imported")
-except ImportError as e:
-    logger.warning(f"⚠️ Full API not available: {e}")
+generate_candidates_func = None
+
+def try_import_full_api():
+    global full_api_available, generate_candidates_func
+    try:
+        from services.api.annotation_api import generate_candidates
+        full_api_available = True
+        generate_candidates_func = generate_candidates
+        logger.info("✅ Full annotation API imported")
+        return True
+    except ImportError as e:
+        logger.warning(f"⚠️ Full API not available: {e}")
+        return False
 
 # Request models
 class CandidateRequest(BaseModel):
@@ -89,7 +96,7 @@ async def health():
         "mode": "bulletproof",
         "features": {
             "openai": openai_available,
-            "full_api": full_api_available
+            "full_api": full_api_available or try_import_full_api()
         }
     }
 
@@ -111,11 +118,14 @@ async def generate_candidates_endpoint(request: CandidateRequest):
     """Generate candidates - try full API first, fallback to enhanced mock"""
     logger.info(f"🎯 Candidates requested for: {request.text[:50]}...")
     
-    # Try full API first if available
-    if full_api_available:
+    # Try full API first if available (lazy import)
+    if not full_api_available:
+        try_import_full_api()
+    
+    if full_api_available and generate_candidates_func:
         try:
             sentence_req = SentenceRequest(**request.dict())
-            result = await generate_candidates(sentence_req, current_user=None)
+            result = await generate_candidates_func(sentence_req, current_user=None)
             logger.info("✅ Used full annotation API")
             return result
         except Exception as e:
