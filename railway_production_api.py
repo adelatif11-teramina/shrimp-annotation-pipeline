@@ -26,6 +26,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 try:
+    # Check for OpenAI API key
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key:
+        logger.warning("⚠️ No OPENAI_API_KEY environment variable found in Railway")
+        logger.info("🔄 Triplet generation will fall back to mock responses")
+    else:
+        logger.info(f"✅ OpenAI API key found: {openai_key[:10]}...")
+    
     # Import the full annotation API
     from services.api.annotation_api import app
     logger.info("✅ Successfully imported full annotation API")
@@ -57,6 +65,64 @@ try:
         except Exception as e:
             logger.error(f"Error saving draft: {e}")
             raise HTTPException(status_code=500, detail=str(e))
+    
+    # Add fallback triplet endpoint if needed
+    if not openai_key:
+        @app.post("/api/candidates")
+        async def generate_candidates_fallback(request: Dict[str, Any]):
+            """Fallback candidates endpoint with mock triplets when OpenAI unavailable"""
+            logger.info("🔄 Using fallback mock triplet generation")
+            
+            # Generate mock triplet based on sentence content
+            sentence = request.get("text", "")
+            mock_triplets = []
+            
+            # Simple keyword-based mock triplet generation
+            if "vibrio" in sentence.lower():
+                mock_triplets.append({
+                    "triplet_id": "mock_t1",
+                    "head": {"text": "Vibrio", "type": "PATHOGEN", "node_id": "vibrio"},
+                    "relation": "CAUSES",
+                    "tail": {"text": "disease", "type": "DISEASE", "node_id": "disease"},
+                    "evidence": "Vibrio causes disease",
+                    "confidence": 0.7,
+                    "audit": {"status": "mock", "confidence": 0.7},
+                    "rule_support": False,
+                    "rule_sources": []
+                })
+            
+            if "shrimp" in sentence.lower() or "penaeus" in sentence.lower():
+                mock_triplets.append({
+                    "triplet_id": "mock_t2", 
+                    "head": {"text": "pathogen", "type": "PATHOGEN", "node_id": "pathogen"},
+                    "relation": "AFFECTS",
+                    "tail": {"text": "shrimp", "type": "SPECIES", "node_id": "shrimp"},
+                    "evidence": "pathogen affects shrimp",
+                    "confidence": 0.7,
+                    "audit": {"status": "mock", "confidence": 0.7},
+                    "rule_support": False,
+                    "rule_sources": []
+                })
+                
+            return {
+                "candidates": {
+                    "entities": [],
+                    "relations": [],
+                    "topics": [],
+                    "triplets": mock_triplets,
+                    "metadata": {
+                        "audit_overall_verdict": "mock",
+                        "audit_notes": "Mock triplets generated - OpenAI API key not available"
+                    }
+                },
+                "triage_score": 0.5,
+                "processing_time": 0.1,
+                "model_info": {
+                    "provider": "mock",
+                    "model": "fallback",
+                    "api_available": False
+                }
+            }
     
     # Enhance WebSocket authentication for anonymous users
     from services.api.annotation_api import websocket_endpoint
@@ -167,6 +233,7 @@ else:
         }
 
 if __name__ == "__main__":
+    import uvicorn
     port = int(os.getenv("PORT", "8000"))
     logger.info(f"🚀 Starting Railway Production API on port {port}")
     
