@@ -30,7 +30,8 @@ try:
     openai_key = os.getenv("OPENAI_API_KEY")
     if not openai_key:
         logger.warning("⚠️ No OPENAI_API_KEY environment variable found in Railway")
-        logger.info("🔄 Triplet generation will fall back to mock responses")
+        logger.info("🔄 Please set OPENAI_API_KEY in Railway environment variables")
+        logger.info("   Go to Railway project → Variables → Add OPENAI_API_KEY")
     else:
         logger.info(f"✅ OpenAI API key found: {openai_key[:10]}...")
     
@@ -66,12 +67,12 @@ try:
             logger.error(f"Error saving draft: {e}")
             raise HTTPException(status_code=500, detail=str(e))
     
-    # Add fallback triplet endpoint if needed
+    # Add fallback triplet endpoint if OpenAI key not available
     if not openai_key:
         @app.post("/api/candidates")
         async def generate_candidates_fallback(request: Dict[str, Any]):
             """Fallback candidates endpoint with mock triplets when OpenAI unavailable"""
-            logger.info("🔄 Using fallback mock triplet generation")
+            logger.info("🔄 Using fallback mock triplet generation (set OPENAI_API_KEY for real AI)")
             
             # Generate mock triplet based on sentence content
             sentence = request.get("text", "")
@@ -112,7 +113,7 @@ try:
                     "triplets": mock_triplets,
                     "metadata": {
                         "audit_overall_verdict": "mock",
-                        "audit_notes": "Mock triplets generated - OpenAI API key not available"
+                        "audit_notes": "Mock triplets generated - Set OPENAI_API_KEY for real AI triplets"
                     }
                 },
                 "triage_score": 0.5,
@@ -120,7 +121,8 @@ try:
                 "model_info": {
                     "provider": "mock",
                     "model": "fallback",
-                    "api_available": False
+                    "api_available": False,
+                    "instructions": "Set OPENAI_API_KEY environment variable in Railway for real AI generation"
                 }
             }
     
