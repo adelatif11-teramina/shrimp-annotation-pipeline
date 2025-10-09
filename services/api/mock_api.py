@@ -633,33 +633,120 @@ async def generate_candidates(
     entities = generate_sample_entities(request.text)
     relations = generate_sample_relations(entities)
     topics = generate_sample_topics(request.text)
-    
+
+    # Build mock triplet payloads aligned with the real API response
+    entity_lookup = {entity["id"]: entity for entity in entities}
+    triplets_payload = []
+    relations_payload = []
+
+    for relation in relations:
+        head = entity_lookup.get(relation.get("head_id"))
+        tail = entity_lookup.get(relation.get("tail_id"))
+        if not head or not tail:
+            continue
+
+        triplet_id = f"mock_triplet_{relation['id']}"
+        audit_status = random.choice(["approve", "revise", "reject"])
+        audit_payload = {
+            "triplet_id": triplet_id,
+            "status": audit_status,
+            "confidence": round(random.uniform(0.65, 0.95), 2),
+            "issues": [] if audit_status == "approve" else ["Mock auditor flag"],
+            "suggested_relation": None,
+            "suggested_evidence": None
+        }
+
+        head_payload = {
+            "cid": head["id"],
+            "text": head["text"],
+            "label": head["label"],
+            "start": head["start"],
+            "end": head["end"],
+            "confidence": head["confidence"],
+            "node_id": f"node_{head['id']}",
+            "node_confidence": head["confidence"]
+        }
+        tail_payload = {
+            "cid": tail["id"],
+            "text": tail["text"],
+            "label": tail["label"],
+            "start": tail["start"],
+            "end": tail["end"],
+            "confidence": tail["confidence"],
+            "node_id": f"node_{tail['id']}",
+            "node_confidence": tail["confidence"]
+        }
+
+        triplets_payload.append({
+            "triplet_id": triplet_id,
+            "relation": relation["label"].upper(),
+            "head": head_payload,
+            "tail": tail_payload,
+            "evidence": relation.get("evidence"),
+            "confidence": relation.get("confidence", 0.8),
+            "rule_support": True,
+            "rule_sources": [relation.get("rule_pattern", "mock_rule")],
+            "raw_triplet": {
+                "relation_id": relation["id"],
+                "source": "mock"
+            },
+            "audit": audit_payload
+        })
+
+        relations_payload.append({
+            "triplet_id": triplet_id,
+            "head_cid": head_payload["cid"],
+            "tail_cid": tail_payload["cid"],
+            "head_text": head_payload["text"],
+            "tail_text": tail_payload["text"],
+            "label": relation["label"].upper(),
+            "confidence": relation.get("confidence", 0.8),
+            "evidence": relation.get("evidence"),
+            "audit": audit_payload,
+            "rule_support": True,
+            "rule_sources": [relation.get("rule_pattern", "mock_rule")]
+        })
+
     candidate_id = len(mock_data["candidates"]) + 1
     confidence = 0.75 + (len(entities) * 0.05)
-    priority_score = min(1.0, confidence * 0.8 + (len(relations) * 0.1))
-    
-    mock_data["candidates"].append({
-        "id": candidate_id,
-        "doc_id": request.doc_id,
-        "sent_id": request.sent_id,
-        "entities": entities,
-        "relations": relations,
+    priority_score = min(1.0, confidence * 0.8 + (len(relations_payload) * 0.1))
+
+    candidates_payload = {
+        "entities": [
+            {
+                **entity,
+                "node_id": f"node_{entity['id']}",
+                "node_confidence": entity["confidence"],
+                "cid": entity["id"]
+            }
+            for entity in entities
+        ],
+        "relations": relations_payload,
         "topics": topics,
-        "confidence": confidence,
-        "priority_score": priority_score
-    })
-    
-    return {
-        "candidate_id": candidate_id,
+        "triplets": triplets_payload,
+        "metadata": {
+            "audit_overall_verdict": random.choice(["pass", "mixed", "fail"]),
+            "audit_notes": "Mock audit notes for UI testing"
+        }
+    }
+
+    rule_stub = {
+        "entities": candidates_payload["entities"],
+        "relations": relations_payload,
+        "topics": topics
+    }
+
+    response = {
         "doc_id": request.doc_id,
         "sent_id": request.sent_id,
-        "entities": len(entities),
-        "relations": len(relations),
-        "topics": len(topics),
-        "confidence": confidence,
-        "priority_score": priority_score,
-        "status": "created"
+        "candidates": candidates_payload,
+        "rule_results": rule_stub,
+        "triage_score": priority_score,
+        "processing_time": round(random.uniform(0.2, 1.0), 2)
     }
+
+    mock_data["candidates"].append(response)
+    return response
 
 # Annotation decisions with history tracking
 @app.post("/annotations/decide")

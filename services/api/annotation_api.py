@@ -7,6 +7,7 @@ annotation management, and data export.
 
 import json
 import logging
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -64,9 +65,11 @@ sys.path.append(str(pipeline_root))
 # Optional imports for Railway deployment
 try:
     from services.candidates.llm_candidate_generator import LLMCandidateGenerator
+    from services.candidates.triplet_workflow import TripletWorkflow
 except ImportError:
     LLMCandidateGenerator = None
-    logger.warning("LLM Candidate Generator not available")
+    TripletWorkflow = None
+    logger.warning("LLM Candidate Generator or triplet workflow not available")
 
 try:
     from services.ingestion.document_ingestion import DocumentIngestionService, Document
@@ -231,14 +234,25 @@ except ImportError:
 
 # Service instances (will be initialized on startup)
 llm_generator: Optional[LLMCandidateGenerator] = None
+triplet_workflow: Optional[TripletWorkflow] = None
 ingestion_service: Optional[DocumentIngestionService] = None
 triage_engine: Optional[TriagePrioritizationEngine] = None
 rule_engine: Optional[ShimpAquacultureRuleEngine] = None
 
+
+def reset_service_state() -> None:
+    """Reset singleton service instances (testing helper)."""
+    global llm_generator, triplet_workflow, ingestion_service, triage_engine, rule_engine
+    llm_generator = None
+    triplet_workflow = None
+    ingestion_service = None
+    triage_engine = None
+    rule_engine = None
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup"""
-    global llm_generator, ingestion_service, triage_engine, rule_engine
+    global llm_generator, triplet_workflow, ingestion_service, triage_engine, rule_engine
     
     # Start monitoring
     from utils.monitoring import monitor
@@ -277,6 +291,13 @@ async def startup_event():
     # Initialize rule engine
     rule_engine = ShimpAquacultureRuleEngine()
     logger.info("✓ Rule-based annotation engine initialized")
+
+    if llm_generator and TripletWorkflow:
+        triplet_workflow = TripletWorkflow(llm_generator, rule_engine)
+        logger.info("✓ Triplet workflow orchestrator initialized")
+    else:
+        triplet_workflow = None
+        logger.warning("Triplet workflow not initialized (dependencies missing)")
     
     logger.info("All services initialized successfully")
 
@@ -309,6 +330,7 @@ async def health_check():
         "environment": settings.environment,
         "services": {
             "llm_generator": llm_generator is not None,
+            "triplet_workflow": triplet_workflow is not None,
             "ingestion_service": ingestion_service is not None,
             "triage_engine": triage_engine is not None,
             "rule_engine": rule_engine is not None
@@ -326,6 +348,7 @@ async def readiness_check():
     """Readiness check for kubernetes/docker deployments"""
     services_ready = {
         "llm_generator": llm_generator is not None,
+        "triplet_workflow": triplet_workflow is not None,
         "ingestion_service": ingestion_service is not None,
         "triage_engine": triage_engine is not None,
         "rule_engine": rule_engine is not None
@@ -459,7 +482,7 @@ async def generate_candidates(
     
     Uses both LLM and rule-based approaches.
     """
-    if not llm_generator or not rule_engine:
+    if not llm_generator or not rule_engine or not triplet_workflow:
         raise HTTPException(status_code=503, detail="Candidate generation services not available")
     
     # Log the API request
@@ -480,30 +503,65 @@ async def generate_candidates(
                 # Track request
                 monitor.metrics.increment_counter("candidate_requests_total")
                 
-                # Generate LLM candidates
+                # Generate combined LLM triplet workflow output
                 llm_start = datetime.now()
-                llm_result = await llm_generator.process_sentence(
+                workflow_result = await triplet_workflow.process_sentence(
                     sentence_request.doc_id,
                     sentence_request.sent_id,
                     sentence_request.text,
                     sentence_request.title
                 )
+                topics = await llm_generator.suggest_topics(
+                    sentence_request.text,
+                    sentence_request.title
+                )
                 llm_duration = (datetime.now() - llm_start).total_seconds()
-                
-                # Log LLM request
+
                 log_llm_request(
                     provider="openai",
                     model="gpt-4o-mini",
                     duration=llm_duration,
-                    tokens_used=llm_result.get("token_usage")
+                    tokens_used=None
                 )
-        
-            # Generate rule-based candidates
-            rule_result = rule_engine.process_sentence(
+
+            # Use rule results from workflow (fallback to direct call if missing)
+            rule_result = workflow_result.rule_result or rule_engine.process_sentence(
                 sentence_request.doc_id,
                 sentence_request.sent_id,
                 sentence_request.text
             )
+
+            entities_payload = workflow_result.entities
+            topics_payload = [asdict(topic) for topic in topics]
+
+            triplets_payload = [item.to_dict() for item in workflow_result.triplets]
+            relations_payload: List[Dict[str, Any]] = []
+            for item in workflow_result.triplets:
+                audit_data = item.audit.to_dict() if item.audit else {}
+                relations_payload.append({
+                    "triplet_id": item.triplet_id,
+                    "head_cid": item.head.get("cid"),
+                    "tail_cid": item.tail.get("cid"),
+                    "head_text": item.head.get("text"),
+                    "tail_text": item.tail.get("text"),
+                    "label": item.relation,
+                    "confidence": item.confidence,
+                    "evidence": item.evidence,
+                    "audit": audit_data,
+                    "rule_support": item.rule_support,
+                    "rule_sources": item.rule_sources,
+                })
+
+            candidates_payload = {
+                "entities": entities_payload,
+                "relations": relations_payload,
+                "topics": topics_payload,
+                "triplets": triplets_payload,
+                "metadata": {
+                    "audit_overall_verdict": workflow_result.audit_overall_verdict,
+                    "audit_notes": workflow_result.audit_notes,
+                }
+            }
             
             # Calculate triage score if triage engine available
             triage_score = None
@@ -516,7 +574,7 @@ async def generate_candidates(
                 
                 # Add candidates to triage (this will calculate scores)
                 triage_engine.add_candidates(
-                    llm_result["candidates"],
+                    candidates_payload,
                     doc_metadata,
                     rule_result
                 )
@@ -530,12 +588,8 @@ async def generate_candidates(
             return CandidateResponse(
                 doc_id=sentence_request.doc_id,
                 sent_id=sentence_request.sent_id,
-                candidates=llm_result["candidates"],
-                rule_results={
-                    "entities": rule_result.get("entities", []),
-                    "relations": rule_result.get("relations", []),
-                    "topics": rule_result.get("topics", [])
-                },
+                candidates=candidates_payload,
+                rule_results=rule_result,
                 triage_score=triage_score,
                 processing_time=processing_time
             )

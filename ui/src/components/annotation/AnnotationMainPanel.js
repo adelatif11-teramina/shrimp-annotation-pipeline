@@ -10,6 +10,7 @@ import {
 import EntityAnnotator from '../EntityAnnotator';
 import RelationAnnotator from '../RelationAnnotator';
 import TopicAnnotator from '../TopicAnnotator';
+import TripletReviewPanel from './TripletReviewPanel';
 
 function AnnotationMainPanel({
   currentItem,
@@ -24,6 +25,8 @@ function AnnotationMainPanel({
   setRelations,
   topics,
   setTopics,
+  triplets,
+  onTripletUpdate,
   entityTypes,
   relationTypes,
 }) {
@@ -58,6 +61,12 @@ function AnnotationMainPanel({
 
       <ButtonGroup sx={{ mb: 2 }}>
         <Button
+          variant={annotationMode === 'triplet' ? 'contained' : 'outlined'}
+          onClick={() => onChangeMode('triplet')}
+        >
+          Triplets
+        </Button>
+        <Button
           variant={annotationMode === 'entity' ? 'contained' : 'outlined'}
           onClick={() => onChangeMode('entity')}
         >
@@ -84,6 +93,14 @@ function AnnotationMainPanel({
           entityTypes={entityTypes}
           selectedType={selectedEntityType}
           setSelectedType={setSelectedEntityType}
+        />
+      )}
+
+      {annotationMode === 'triplet' && (
+        <TripletReviewPanel
+          triplets={triplets}
+          relationTypes={relationTypes}
+          onUpdate={onTripletUpdate}
         />
       )}
 

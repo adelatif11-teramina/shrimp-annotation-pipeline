@@ -30,7 +30,8 @@ function AnnotationWorkspace() {
   const [entities, setEntities] = useState([]);
   const [relations, setRelations] = useState([]);
   const [topics, setTopics] = useState([]);
-  const [annotationMode, setAnnotationMode] = useState('entity'); // entity, relation, topic
+  const [triplets, setTriplets] = useState([]);
+  const [annotationMode, setAnnotationMode] = useState('triplet'); // triplet, entity, relation, topic
   const [selectedEntityType, setSelectedEntityType] = useState('SPECIES');
   const [notes, setNotes] = useState('');
   const [confidence, setConfidence] = useState('high');
@@ -52,6 +53,20 @@ function AnnotationWorkspace() {
 
   const handleFeedbackClose = useCallback(() => {
     setFeedback(null);
+  }, []);
+
+  const initializeTriplets = useCallback((rawTriplets = []) => {
+    return rawTriplets.map((triplet) => ({
+      ...triplet,
+      reviewer_action:
+        triplet.reviewer_action || triplet.audit?.status || 'pending',
+      edited: {
+        relation: triplet.relation,
+        head: { ...(triplet.head || {}) },
+        tail: { ...(triplet.tail || {}) },
+        evidence: triplet.evidence,
+      },
+    }));
   }, []);
   
   
@@ -128,12 +143,13 @@ function AnnotationWorkspace() {
         entities,
         relations,
         topics,
+        triplets,
         notes,
         confidence
       };
       updateData(currentData);
     }
-  }, [entities, relations, topics, notes, confidence, currentItem, updateData]);
+  }, [entities, relations, topics, triplets, notes, confidence, currentItem, updateData]);
 
   // Handle draft restoration - automatically restore without dialog
   useEffect(() => {
@@ -149,6 +165,7 @@ function AnnotationWorkspace() {
         entities,
         relations,
         topics,
+        triplets,
         notes,
         confidence
       };
@@ -167,6 +184,7 @@ function AnnotationWorkspace() {
       setEntities(draft.entities || []);
       setRelations(draft.relations || []);
       setTopics(draft.topics || []);
+      setTriplets(draft.triplets || []);
       setNotes(draft.notes || '');
       setConfidence(draft.confidence || 'high');
     }
@@ -207,22 +225,30 @@ function AnnotationWorkspace() {
       
       setCurrentItem(item);
       
-      // Load existing entities from the queue item format
-      if (item && item.entities) {
-        // Map entities to the expected format
-        const mappedEntities = item.entities.map(entity => ({
-          id: `entity_${item.id}_${entity.id}`,
+      const candidateEntities = item?.candidate_data?.entities || item?.entities || [];
+      const candidateRelations = item?.candidate_data?.relations || item?.relations || [];
+      const candidateTopics = item?.candidate_data?.topics || item?.topics || [];
+      const candidateTriplets = item?.candidate_data?.triplets || item?.triplets || [];
+
+      if (candidateEntities.length > 0) {
+        const mappedEntities = candidateEntities.map((entity, index) => ({
+          id: entity.id || entity.cid || `entity_${item.id || item.item_id}_${index}`,
           text: entity.text,
           label: entity.label,
-          type: entity.label, // Alias for compatibility
+          type: entity.label,
           start: entity.start,
           end: entity.end,
-          confidence: entity.confidence || 0.9
+          confidence: entity.confidence || entity.node_confidence || 0.9,
+          source: entity.source || 'llm'
         }));
         setEntities(mappedEntities);
-        setRelations(item.relations || []);
-        setTopics(item.topics || []);
+      } else {
+        setEntities([]);
       }
+
+      setRelations(candidateRelations || []);
+      setTopics(candidateTopics || []);
+      setTriplets(initializeTriplets(candidateTriplets));
     } catch (error) {
       console.error('Failed to load item:', error);
     } finally {
@@ -298,6 +324,40 @@ function AnnotationWorkspace() {
     }
   }, [annotationMode, selectedEntityType, entities, currentItem]);
 
+  const handleTripletUpdate = useCallback((tripletId, updates) => {
+    setTriplets((prevTriplets) =>
+      prevTriplets.map((triplet) => {
+        if (triplet.triplet_id !== tripletId) {
+          return triplet;
+        }
+        const { edited, ...rest } = updates;
+        const nextEdited = edited
+          ? { ...triplet.edited, ...edited }
+          : triplet.edited;
+        return {
+          ...triplet,
+          ...rest,
+          edited: nextEdited,
+        };
+      })
+    );
+  }, []);
+
+  const serializeTriplets = useCallback(() => {
+    return triplets.map((triplet) => ({
+      triplet_id: triplet.triplet_id,
+      reviewer_action: triplet.reviewer_action || 'pending',
+      relation: triplet.edited?.relation || triplet.relation,
+      head: triplet.edited?.head || triplet.head,
+      tail: triplet.edited?.tail || triplet.tail,
+      evidence: triplet.edited?.evidence ?? triplet.evidence,
+      confidence: triplet.confidence,
+      rule_support: triplet.rule_support,
+      rule_sources: triplet.rule_sources,
+      audit: triplet.audit,
+    }));
+  }, [triplets]);
+
   // Annotation handlers
   const handleAccept = useCallback(async () => {
     if (!currentItem) {
@@ -311,6 +371,7 @@ function AnnotationWorkspace() {
       entities,
       relations,
       topics,
+      triplets: serializeTriplets(),
       confidence: confidence === 'high' ? 0.9 : confidence === 'medium' ? 0.7 : 0.5,
       notes,
       user_id: 1,
@@ -357,6 +418,7 @@ function AnnotationWorkspace() {
     navigate,
     notes,
     relations,
+    serializeTriplets,
     showFeedback,
     stopAutoSave,
     topics,
@@ -372,6 +434,7 @@ function AnnotationWorkspace() {
       item_id: currentItem.item_id || currentItem.id,
       candidate_id: currentItem.candidate_id || currentItem.item_id || currentItem.id,
       decision: 'reject',
+      triplets: serializeTriplets(),
       notes,
       user_id: 1,
     };
@@ -390,7 +453,7 @@ function AnnotationWorkspace() {
       console.error('Failed to reject annotation:', error);
       showFeedback('Failed to reject annotation. Please try again.', 'error');
     }
-  }, [currentItem, navigate, notes, showFeedback, submitAnnotation, updateSessionStats]);
+  }, [currentItem, navigate, notes, serializeTriplets, showFeedback, submitAnnotation, updateSessionStats]);
 
   const handleModify = useCallback(async () => {
     if (!currentItem) {
@@ -404,6 +467,7 @@ function AnnotationWorkspace() {
         entities,
         relations,
         topics,
+        triplets: serializeTriplets(),
         confidence,
         notes,
       },
@@ -426,6 +490,7 @@ function AnnotationWorkspace() {
     loadNextItem,
     notes,
     relations,
+    serializeTriplets,
     showFeedback,
     submitAnnotation,
     topics,
@@ -437,6 +502,7 @@ function AnnotationWorkspace() {
       entities,
       relations,
       topics,
+      triplets,
       notes,
       confidence,
     };
@@ -448,7 +514,7 @@ function AnnotationWorkspace() {
       console.error('Failed to save draft:', error);
       showFeedback('Failed to save draft', 'error');
     }
-  }, [confidence, entities, notes, relations, saveNow, showFeedback, topics]);
+  }, [confidence, entities, notes, relations, saveNow, showFeedback, topics, triplets]);
 
   const handleSkip = useCallback(async () => {
     if (!currentItem) {
@@ -543,6 +609,8 @@ function AnnotationWorkspace() {
             setRelations={setRelations}
             topics={topics}
             setTopics={setTopics}
+            triplets={triplets}
+            onTripletUpdate={handleTripletUpdate}
             entityTypes={ENTITY_TYPES}
             relationTypes={RELATION_TYPES}
           />
@@ -559,6 +627,7 @@ function AnnotationWorkspace() {
             onModify={handleModify}
             onReject={handleReject}
             onSkip={handleSkip}
+            triplets={triplets}
           />
         </Grid>
       </Grid>

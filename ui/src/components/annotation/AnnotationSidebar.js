@@ -29,9 +29,11 @@ function AnnotationSidebar({
   onModify,
   onReject,
   onSkip,
+  triplets,
 }) {
   const candidateEntities = currentItem?.candidate_data?.entities || [];
   const ruleEntities = currentItem?.rule_results?.entities || [];
+  const candidateTriplets = triplets || currentItem?.candidate_data?.triplets || [];
 
   return (
     <Grid container direction="column" spacing={2}>
@@ -81,6 +83,24 @@ function AnnotationSidebar({
               <Typography variant="body2" color="text.secondary">
                 No suggestions available for this item.
               </Typography>
+            )}
+
+            {candidateTriplets.length > 0 && (
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Triplet Candidates
+                </Typography>
+                {candidateTriplets.slice(0, 4).map((triplet) => (
+                  <Chip
+                    key={triplet.triplet_id}
+                    label={`${triplet.head?.text || '…'} — ${triplet.relation || '…'} → ${triplet.tail?.text || '…'}`}
+                    size="small"
+                    sx={{ m: 0.5 }}
+                    color={triplet.reviewer_action === 'approve' ? 'success' : 'default'}
+                    variant="outlined"
+                  />
+                ))}
+              </Box>
             )}
           </CardContent>
         </Card>

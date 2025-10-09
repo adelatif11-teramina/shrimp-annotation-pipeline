@@ -10,7 +10,8 @@ import logging
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
+import uuid
 import asyncio
 from datetime import datetime
 
@@ -57,6 +58,204 @@ class TopicCandidate:
     label: str
     score: float
     keywords: List[str] = None
+
+
+@dataclass
+class TripletNode:
+    """Node extracted for knowledge graph triplet generation"""
+    node_id: str
+    label: str
+    type: str
+    confidence: float = 0.9
+    size: float = 1.0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    start: Optional[int] = None
+    end: Optional[int] = None
+
+
+@dataclass
+class TripletLink:
+    """Link between two nodes representing a relation"""
+    link_id: str
+    source: str
+    target: str
+    relation: str
+    evidence: str
+    confidence: float = 0.9
+
+
+@dataclass
+class TripletCandidate:
+    """Structured triplet candidate ready for review"""
+    triplet_id: str
+    head: TripletNode
+    relation: str
+    tail: TripletNode
+    evidence: str
+    confidence: float = 0.9
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "triplet_id": self.triplet_id,
+            "head": asdict(self.head),
+            "relation": self.relation,
+            "tail": asdict(self.tail),
+            "evidence": self.evidence,
+            "confidence": self.confidence,
+        }
+
+
+@dataclass
+class TripletExtractionResult:
+    """Full extraction output from the KG prompt"""
+    nodes: List[TripletNode]
+    links: List[TripletLink]
+    triplets: List[TripletCandidate]
+    raw_response: Dict[str, Any]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "nodes": [asdict(node) for node in self.nodes],
+            "links": [
+                {
+                    "link_id": link.link_id,
+                    "source": link.source,
+                    "target": link.target,
+                    "relation": link.relation,
+                    "evidence": link.evidence,
+                    "confidence": link.confidence,
+                }
+                for link in self.links
+            ],
+            "triplets": [triplet.to_dict() for triplet in self.triplets],
+            "raw_response": self.raw_response,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Dict[str, Any]) -> "TripletExtractionResult":
+        node_lookup = {}
+        nodes = []
+        for node_data in payload.get("nodes", []):
+            node = TripletNode(
+                node_id=node_data.get("node_id") or node_data.get("id"),
+                label=node_data.get("label", ""),
+                type=node_data.get("type", "UNKNOWN"),
+                confidence=node_data.get("confidence", 0.9),
+                size=node_data.get("size", 1.0),
+                metadata=node_data.get("metadata", {}),
+                start=node_data.get("start"),
+                end=node_data.get("end"),
+            )
+            node_lookup[node.node_id] = node
+            nodes.append(node)
+
+        links = []
+        for link_data in payload.get("links", []):
+            link = TripletLink(
+                link_id=link_data.get("link_id", str(uuid.uuid4())),
+                source=link_data.get("source"),
+                target=link_data.get("target"),
+                relation=link_data.get("relation", link_data.get("type", "ASSOCIATED_WITH")),
+                evidence=link_data.get("evidence", ""),
+                confidence=link_data.get("confidence", 0.9),
+            )
+            links.append(link)
+
+        triplets = []
+        for triplet_data in payload.get("triplets", []):
+            head_data = triplet_data.get("head", {})
+            tail_data = triplet_data.get("tail", {})
+            head_id = head_data.get("node_id") or head_data.get("nodeId") or head_data.get("id")
+            tail_id = tail_data.get("node_id") or tail_data.get("nodeId") or tail_data.get("id")
+            head_node = node_lookup.get(head_id) or TripletNode(
+                node_id=head_id or str(uuid.uuid4()),
+                label=head_data.get("label", head_data.get("text", "")),
+                type=head_data.get("type", "UNKNOWN"),
+                confidence=head_data.get("confidence", 0.9),
+                start=head_data.get("start"),
+                end=head_data.get("end"),
+            )
+            tail_node = node_lookup.get(tail_id) or TripletNode(
+                node_id=tail_id or str(uuid.uuid4()),
+                label=tail_data.get("label", tail_data.get("text", "")),
+                type=tail_data.get("type", "UNKNOWN"),
+                confidence=tail_data.get("confidence", 0.9),
+                start=tail_data.get("start"),
+                end=tail_data.get("end"),
+            )
+            triplets.append(
+                TripletCandidate(
+                    triplet_id=triplet_data.get("triplet_id", str(uuid.uuid4())),
+                    head=head_node,
+                    relation=triplet_data.get("relation", "ASSOCIATED_WITH"),
+                    tail=tail_node,
+                    evidence=triplet_data.get("evidence", ""),
+                    confidence=triplet_data.get("confidence", 0.9),
+                )
+            )
+
+        return cls(
+            nodes=nodes,
+            links=links,
+            triplets=triplets,
+            raw_response=payload.get("raw_response", payload),
+        )
+
+
+@dataclass
+class TripletAuditEntry:
+    """Audit decision for a single triplet"""
+    triplet_id: str
+    status: str
+    confidence: float
+    issues: List[str] = field(default_factory=list)
+    suggested_relation: Optional[str] = None
+    suggested_evidence: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "triplet_id": self.triplet_id,
+            "status": self.status,
+            "confidence": self.confidence,
+            "issues": list(self.issues),
+            "suggested_relation": self.suggested_relation,
+            "suggested_evidence": self.suggested_evidence,
+        }
+
+
+@dataclass
+class TripletAuditReport:
+    """Aggregated audit report returned by the cross-check agent"""
+    triplets: List[TripletAuditEntry]
+    overall_verdict: str
+    notes: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "triplets": [entry.to_dict() for entry in self.triplets],
+            "overall_verdict": self.overall_verdict,
+            "notes": self.notes,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Dict[str, Any]) -> "TripletAuditReport":
+        entries = []
+        for entry_data in payload.get("triplets", []):
+            entries.append(
+                TripletAuditEntry(
+                    triplet_id=entry_data.get("triplet_id", ""),
+                    status=entry_data.get("status", "revise"),
+                    confidence=entry_data.get("confidence", 0.0),
+                    issues=entry_data.get("issues", []) or [],
+                    suggested_relation=entry_data.get("suggested_relation"),
+                    suggested_evidence=entry_data.get("suggested_evidence"),
+                )
+            )
+        return cls(
+            triplets=entries,
+            overall_verdict=payload.get("overall_verdict", "mixed"),
+            notes=payload.get("notes"),
+        )
 
 class LLMCandidateGenerator:
     """
@@ -263,7 +462,7 @@ class LLMCandidateGenerator:
         
         # Build prompt
         prompt_config = self.prompts["entity_extraction"]
-        prompt = prompt_config["main_prompt"].format(sentence=sentence)
+        prompt = self._render_prompt(prompt_config["main_prompt"], sentence=sentence)
         
         # Add few-shot examples
         if prompt_config.get("few_shot_examples"):
@@ -339,7 +538,8 @@ class LLMCandidateGenerator:
         
         # Build prompt
         prompt_config = self.prompts["relation_extraction"]
-        prompt = prompt_config["main_prompt"].format(
+        prompt = self._render_prompt(
+            prompt_config["main_prompt"],
             sentence=sentence,
             entities=json.dumps(entity_list, indent=2)
         )
@@ -382,9 +582,10 @@ class LLMCandidateGenerator:
         """
         # Build prompt
         prompt_config = self.prompts["topic_suggestion"]
-        prompt = prompt_config["main_prompt"].format(
+        prompt = self._render_prompt(
+            prompt_config["main_prompt"],
             title=title or "Unknown",
-            text=text[:500]  # Limit text length
+            text=text[:500]
         )
         
         # Call LLM
@@ -407,6 +608,215 @@ class LLMCandidateGenerator:
                 logger.warning(f"Failed to parse topic: {e}")
         
         return topics
+
+    def _render_prompt(self, template: str, **values: Any) -> str:
+        """Safely render prompt templates without breaking JSON braces"""
+        rendered = template
+        for key, value in values.items():
+            rendered = rendered.replace(f"{{{key}}}", value if isinstance(value, str) else str(value))
+        return rendered
+
+    def _compose_prompt(self, prompt_config: Dict[str, Any], **format_kwargs) -> str:
+        """Render prompt with optional few-shot examples"""
+        prompt = self._render_prompt(prompt_config["main_prompt"], **format_kwargs)
+        examples = prompt_config.get("few_shot_examples", [])
+        if not examples:
+            return prompt
+
+        examples_text = []
+        for example in examples[:3]:
+            sentence = example.get("sentence")
+            output = example.get("output")
+            examples_text.append(
+                f"Sentence: {sentence}\nOutput: {json.dumps(output, ensure_ascii=False)}"
+            )
+        return "\n\n".join(examples_text) + "\n\n" + prompt
+
+    async def generate_triplets(self, sentence: str) -> TripletExtractionResult:
+        """Generate knowledge graph triplets for a sentence."""
+        cache_key = self._get_cache_key(sentence, "knowledge_graph")
+        cached = self._load_from_cache(cache_key)
+        if cached:
+            return TripletExtractionResult.from_dict(cached)
+
+        prompt_config = self.prompts.get("knowledge_graph_extraction")
+        if not prompt_config:
+            logger.warning("Knowledge graph prompt configuration not found")
+            return TripletExtractionResult(nodes=[], links=[], triplets=[], raw_response={})
+
+        prompt = self._compose_prompt(prompt_config, sentence=sentence)
+
+        if self.provider == "openai":
+            result = await self._call_openai(prompt, prompt_config["system_prompt"])
+        else:
+            result = self._call_ollama(prompt, prompt_config["system_prompt"])
+
+        if not isinstance(result, dict):
+            logger.error("Triplet generation result was not a dictionary")
+            result = {}
+
+        extraction = self._parse_triplet_response(sentence, result)
+
+        if extraction.triplets:
+            self._save_to_cache(cache_key, extraction.to_dict())
+
+        return extraction
+
+    def _infer_span(self, sentence: str, label: str, start: Optional[Any], end: Optional[Any]) -> Tuple[Optional[int], Optional[int]]:
+        """Infer entity span for a node"""
+        if not label:
+            return None, None
+
+        start_idx = start if isinstance(start, int) else None
+        end_idx = end if isinstance(end, int) else None
+
+        if start_idx is None or end_idx is None or start_idx >= end_idx:
+            validated_start, validated_end = self._validate_entity_span(sentence, label, 0, 0)
+        else:
+            validated_start, validated_end = self._validate_entity_span(sentence, label, start_idx, end_idx)
+
+        return validated_start, validated_end
+
+    def _parse_triplet_response(self, sentence: str, result: Dict[str, Any]) -> TripletExtractionResult:
+        """Convert raw LLM response into structured triplet data"""
+        nodes = []
+        node_lookup: Dict[str, TripletNode] = {}
+
+        for idx, node_dict in enumerate(result.get("nodes", []) or []):
+            node_id = node_dict.get("id") or node_dict.get("node_id") or f"node_{idx}"
+            label = node_dict.get("label") or node_dict.get("text") or ""
+            node_type = node_dict.get("type", "UNKNOWN")
+            confidence = node_dict.get("confidence", 0.9)
+            size = node_dict.get("size", 1.0)
+            metadata = node_dict.get("metadata", {}) or {}
+            start, end = self._infer_span(sentence, label, node_dict.get("start"), node_dict.get("end"))
+            node = TripletNode(
+                node_id=node_id,
+                label=label,
+                type=node_type,
+                confidence=confidence,
+                size=size,
+                metadata=metadata,
+                start=start,
+                end=end
+            )
+            nodes.append(node)
+            node_lookup[node_id] = node
+
+        links = []
+        triplets = []
+
+        for idx, link_dict in enumerate(result.get("links", []) or []):
+            source = link_dict.get("source")
+            target = link_dict.get("target")
+            if not source or not target:
+                continue
+            relation = link_dict.get("type") or link_dict.get("relation") or "ASSOCIATED_WITH"
+            evidence = link_dict.get("evidence", "")
+            link_conf = link_dict.get("confidence", 0.9)
+            link_id = link_dict.get("link_id") or link_dict.get("id") or f"link_{idx}"
+
+            link = TripletLink(
+                link_id=link_id,
+                source=source,
+                target=target,
+                relation=relation,
+                evidence=evidence,
+                confidence=link_conf
+            )
+            links.append(link)
+
+            head_node = node_lookup.get(source)
+            tail_node = node_lookup.get(target)
+            if not head_node or not tail_node:
+                continue
+
+            combined_conf = min(
+                head_node.confidence if head_node.confidence is not None else 1.0,
+                tail_node.confidence if tail_node.confidence is not None else 1.0,
+                link_conf
+            )
+
+            triplets.append(
+                TripletCandidate(
+                    triplet_id=link_id,
+                    head=head_node,
+                    relation=relation,
+                    tail=tail_node,
+                    evidence=evidence,
+                    confidence=combined_conf
+                )
+            )
+
+        return TripletExtractionResult(
+            nodes=nodes,
+            links=links,
+            triplets=triplets,
+            raw_response=result
+        )
+
+    async def audit_triplets(self, sentence: str, triplets: List[TripletCandidate]) -> TripletAuditReport:
+        """Cross-check triplets using a secondary auditing agent."""
+        if not triplets:
+            return TripletAuditReport(triplets=[], overall_verdict="pass", notes="No triplets to audit")
+
+        prompt_config = self.prompts.get("triplet_audit")
+        if not prompt_config:
+            logger.warning("Triplet audit prompt missing; skipping secondary validation")
+            return TripletAuditReport(triplets=[], overall_verdict="mixed", notes="Triplet audit prompt missing")
+
+        payload = []
+        for triplet in triplets:
+            payload.append({
+                "triplet_id": triplet.triplet_id,
+                "head": {
+                    "text": triplet.head.label,
+                    "type": triplet.head.type
+                },
+                "relation": triplet.relation,
+                "tail": {
+                    "text": triplet.tail.label,
+                    "type": triplet.tail.type
+                },
+                "evidence": triplet.evidence,
+                "confidence": triplet.confidence
+            })
+
+        triplets_json = json.dumps(payload, ensure_ascii=False, indent=2)
+        cache_key = self._get_cache_key(f"{sentence}:{triplets_json}", "triplet_audit")
+        cached = self._load_from_cache(cache_key)
+        if cached:
+            return TripletAuditReport.from_dict(cached)
+
+        prompt = self._render_prompt(
+            prompt_config["main_prompt"],
+            sentence=sentence,
+            triplets_json=triplets_json
+        )
+
+        examples = prompt_config.get("few_shot_examples", [])
+        if examples:
+            example_text = []
+            for example in examples[:2]:
+                example_text.append(
+                    "Example Sentence: " + example.get("sentence", "") +
+                    "\nCandidate triplets:\n" + example.get("triplets_json", "") +
+                    "\nExpected Output:\n" + json.dumps(example.get("output", {}), ensure_ascii=False)
+                )
+            prompt = "\n\n".join(example_text) + "\n\n" + prompt
+
+        if self.provider == "openai":
+            result = await self._call_openai(prompt, prompt_config["system_prompt"])
+        else:
+            result = self._call_ollama(prompt, prompt_config["system_prompt"])
+
+        if not isinstance(result, dict):
+            logger.error("Triplet audit result invalid; returning fallback report")
+            return TripletAuditReport(triplets=[], overall_verdict="fail", notes="Audit agent returned invalid output")
+
+        report = TripletAuditReport.from_dict(result)
+        self._save_to_cache(cache_key, report.to_dict())
+        return report
     
     async def process_sentence(self, 
                                doc_id: str,

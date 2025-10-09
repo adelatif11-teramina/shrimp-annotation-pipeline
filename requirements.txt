@@ -30,6 +30,9 @@ jsonlines>=3.1
 fastapi>=0.100
 uvicorn>=0.23
 httpx>=0.24
+pyjwt>=2.8  # JWT authentication
+bcrypt>=4.0  # Password hashing
+python-multipart>=0.0.6  # Form data parsing
 
 # Quality metrics
 scikit-learn>=1.3  # For IAA metrics
@@ -40,6 +43,26 @@ tqdm>=4.65
 python-dotenv>=1.0
 pyyaml>=6.0
 click>=8.1  # CLI
+
+# Database migrations
+alembic>=1.12  # Database migration management
+
+# Monitoring and metrics
+psutil>=5.9  # System monitoring
+prometheus-client>=0.17  # Metrics collection
+
+# Error handling and logging
+sentry-sdk>=1.32  # Error tracking (optional)
+
+# Async support
+asyncio-mqtt>=0.14  # MQTT async support (if needed)
+aiofiles>=23.0  # Async file operations
+
+# WebSocket support
+websockets>=11.0  # WebSocket connections
+
+# Additional security
+cryptography>=41.0  # Enhanced cryptographic support
 
 # Testing
 pytest>=7.4

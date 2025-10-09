@@ -49,7 +49,7 @@ class Document(Base):
     title = Column(String)
     pub_date = Column(String)
     raw_text = Column(Text, nullable=False)
-    metadata = Column(SQLiteJSON, default=dict)
+    document_metadata = Column(SQLiteJSON, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -68,7 +68,7 @@ class Sentence(Base):
     end_offset = Column(Integer)
     text = Column(Text, nullable=False)
     paragraph_id = Column(Integer)
-    metadata = Column(SQLiteJSON, default=dict)
+    sentence_metadata = Column(SQLiteJSON, default=dict)
     processed = Column(Boolean, default=False)
     
     # Relationships

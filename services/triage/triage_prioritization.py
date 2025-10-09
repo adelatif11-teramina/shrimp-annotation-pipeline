@@ -398,6 +398,13 @@ class TriagePrioritizationEngine:
                 topic, doc_metadata, None, "topic"
             )
             items.append(item)
+
+        # Process triplets (treated as relation-level items)
+        for triplet in candidates.get("triplets", []):
+            item = self.calculate_priority(
+                triplet, doc_metadata, None, "triplet"
+            )
+            items.append(item)
         
         # Add to queue
         for item in items:

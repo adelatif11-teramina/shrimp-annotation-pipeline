@@ -451,6 +451,33 @@ class LogOperation:
         else:
             log_data['status'] = 'completed'
             self.logger.info(f"Operation {self.operation_name} completed", extra=log_data)
+    
+    async def __aenter__(self):
+        self.start_time = datetime.utcnow()
+        self.logger.info(f"Starting {self.operation_name}", extra={
+            'operation': self.operation_name,
+            'status': 'started',
+            **self.extra_data
+        })
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        duration = (datetime.utcnow() - self.start_time).total_seconds()
+        
+        log_data = {
+            'operation': self.operation_name,
+            'duration_ms': round(duration * 1000, 2),
+            **self.extra_data
+        }
+        
+        if exc_type:
+            log_data['status'] = 'failed'
+            log_data['error'] = str(exc_val)
+            log_data['error_type'] = exc_type.__name__
+            self.logger.error(f"Operation {self.operation_name} failed", extra=log_data)
+        else:
+            log_data['status'] = 'completed'
+            self.logger.info(f"Operation {self.operation_name} completed", extra=log_data)
 
 # Export commonly used items
 __all__ = [

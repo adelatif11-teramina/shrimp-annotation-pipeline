@@ -48,7 +48,7 @@ class Document(Base):
     title = Column(String)
     pub_date = Column(String)
     raw_text = Column(Text, nullable=False)
-    metadata = Column(JSONType, default={})
+    document_metadata = Column(JSONType, default={})
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
@@ -67,7 +67,7 @@ class Sentence(Base):
     end_offset = Column(Integer) 
     text = Column(Text, nullable=False)
     paragraph_id = Column(Integer)
-    metadata = Column(JSONType, default={})
+    sentence_metadata = Column(JSONType, default={})
     
     # Relationships
     document = relationship("Document", back_populates="sentences")

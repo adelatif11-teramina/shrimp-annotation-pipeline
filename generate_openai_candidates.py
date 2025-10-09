@@ -16,6 +16,8 @@ pipeline_root = Path(__file__).parent
 sys.path.append(str(pipeline_root))
 
 from services.candidates.llm_candidate_generator import LLMCandidateGenerator
+from services.candidates.triplet_workflow import TripletWorkflow
+from services.rules.rule_based_annotator import ShimpAquacultureRuleEngine
 from services.ingestion.document_ingestion import DocumentIngestionService
 
 async def main():
@@ -40,6 +42,9 @@ async def main():
         temperature=0.1,
         cache_dir=pipeline_root / "data/local/llm_cache"
     )
+
+    rule_engine = ShimpAquacultureRuleEngine()
+    workflow = TripletWorkflow(llm_generator, rule_engine)
     
     print("✅ OpenAI GPT-4o-mini generator ready")
     
@@ -57,6 +62,7 @@ async def main():
     candidates_dir.mkdir(parents=True, exist_ok=True)
     
     total_entities = 0
+    total_triplets = 0
     total_sentences_processed = 0
     
     for filename in priority_files:
@@ -87,44 +93,33 @@ async def main():
                 try:
                     print(f"     Sentence {i+1:2d}: {sentence.text[:60]}...")
                     
-                    # Extract entities using OpenAI
-                    entities = await llm_generator.extract_entities(sentence.text)
-                    
-                    if entities:
-                        candidate = {
-                            "doc_id": document.doc_id,
-                            "sent_id": sentence.sent_id,
-                            "text": sentence.text,
-                            "start": sentence.start,
-                            "end": sentence.end,
-                            "entities": [
-                                {
-                                    "text": entity.text,
-                                    "label": entity.label,
-                                    "start": entity.start,
-                                    "end": entity.end,
-                                    "confidence": entity.confidence
-                                }
-                                for entity in entities
-                            ],
-                            "relations": [],  # Can add relation extraction later
-                            "topics": [],    # Can add topic classification later
-                            "source": "openai_gpt4o_mini",
-                            "model": "gpt-4o-mini",
-                            "created_at": datetime.now().isoformat()
-                        }
-                        
-                        doc_candidates.append(candidate)
-                        total_entities += len(entities)
-                        
-                        # Show what was found
-                        entity_summary = [f"{e.text}→{e.label}" for e in entities[:3]]
-                        print(f"                ✅ {len(entities)} entities: {', '.join(entity_summary)}")
-                    else:
-                        print(f"                ⭕ No entities found")
-                        
+                    # Run the full triplet workflow for this sentence
+                    workflow_result = await workflow.process_sentence(
+                        document.doc_id,
+                        sentence.sent_id,
+                        sentence.text,
+                        title=document.title
+                    )
+
                     total_sentences_processed += 1
-                    
+                    total_entities += len(workflow_result.entities)
+                    total_triplets += len(workflow_result.triplets)
+
+                    if workflow_result.triplets:
+                        triplet_summary = [
+                            f"{item.head['text']} -{item.relation}-> {item.tail['text']}"
+                            for item in workflow_result.triplets[:2]
+                        ]
+                        print(
+                            f"                ✅ {len(workflow_result.triplets)} triplets | "
+                            f"Audit: {workflow_result.audit_overall_verdict.upper()} | "
+                            f"Examples: {', '.join(triplet_summary)}"
+                        )
+                    else:
+                        print("                ⭕ No triplets generated")
+
+                    doc_candidates.append(workflow_result.to_dict())
+
                     # Small delay to be respectful to API
                     await asyncio.sleep(0.1)
                         
@@ -133,7 +128,7 @@ async def main():
             
             # Save candidates
             if doc_candidates:
-                output_file = candidates_dir / f"{document.doc_id}_openai_candidates.jsonl"
+                output_file = candidates_dir / f"{document.doc_id}_triplet_candidates.jsonl"
                 with open(output_file, 'w', encoding='utf-8') as f:
                     for candidate in doc_candidates:
                         f.write(json.dumps(candidate, ensure_ascii=False) + '\n')
@@ -148,14 +143,14 @@ async def main():
     print(f"\n🎯 Generation Complete!")
     print(f"   📊 Processed: {total_sentences_processed} sentences")
     print(f"   🏷️  Generated: {total_entities} entity candidates")
+    print(f"   🔺 Triplets: {total_triplets} LLM triplet candidates")
     print(f"   💾 Output: {candidates_dir}")
-    
-    # Quality summary
-    if total_entities > 0:
-        avg_entities_per_sentence = total_entities / total_sentences_processed
-        print(f"   📈 Average: {avg_entities_per_sentence:.1f} entities per sentence")
-    
-    print(f"\n✅ High-quality OpenAI candidates ready for annotation!")
+
+    if total_sentences_processed:
+        avg_triplets = total_triplets / total_sentences_processed
+        print(f"   📈 Average: {avg_triplets:.1f} triplets per sentence")
+
+    print(f"\n✅ High-quality OpenAI triplet candidates ready for annotation!")
     print(f"💡 Cost estimate: ~$0.01-0.05 for this processing")
     
     return 0

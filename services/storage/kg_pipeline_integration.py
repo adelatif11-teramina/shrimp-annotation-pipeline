@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from production_kg_store import ProductionKGStore, KGTriplet
+from .production_kg_store import ProductionKGStore, KGTriplet
 
 logger = logging.getLogger(__name__)
 

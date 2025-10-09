@@ -86,10 +86,14 @@ def db_session(test_db) -> Generator[Session, None, None]:
 @pytest.fixture
 def test_client(mock_settings, mock_monitoring, disable_psutil):
     """Create FastAPI test client"""
-    from services.api.annotation_api import app
-    
-    with TestClient(app) as client:
+    from services.api import annotation_api
+
+    annotation_api.reset_service_state()
+
+    with TestClient(annotation_api.app) as client:
         yield client
+
+    annotation_api.reset_service_state()
 
 @pytest.fixture
 def auth_headers():
@@ -154,35 +158,56 @@ def sample_relations():
 @pytest.fixture
 async def mock_llm_generator(monkeypatch):
     """Mock LLM generator for testing"""
-    from services.candidates.llm_candidate_generator import LLMCandidateGenerator
-    
+    from types import SimpleNamespace
+    from services.api import annotation_api
+
+    class MockWorkflow:
+        async def process_sentence(self, doc_id, sent_id, sentence, title=None):
+            return SimpleNamespace(
+                doc_id=doc_id,
+                sent_id=sent_id,
+                sentence=sentence,
+                triplets=[],
+                audit_overall_verdict="pass",
+                audit_notes=None,
+                entities=[],
+                nodes=[],
+                links=[],
+                rule_result={},
+            )
+
     class MockLLMGenerator:
         async def extract_entities(self, sentence):
             return []
-        
+
         async def extract_relations(self, sentence, entities):
             return []
-        
+
         async def suggest_topics(self, text, title=None):
             return []
         
-        async def process_sentence(self, doc_id, sent_id, sentence, title=None):
-            return {
-                "doc_id": doc_id,
-                "sent_id": sent_id,
-                "candidates": {
-                    "entities": [],
-                    "relations": [],
-                    "topics": []
+        async def process_batch(self, sentences):
+            """Mock batch processing"""
+            return [
+                {
+                    "doc_id": f"doc_{i}",
+                    "sent_id": f"sent_{i}",
+                    "candidates": {
+                        "entities": [],
+                        "relations": [],
+                        "topics": []
+                    }
                 }
-            }
-    
-    monkeypatch.setattr(
-        "services.candidates.llm_candidate_generator.LLMCandidateGenerator",
-        MockLLMGenerator
-    )
-    
-    return MockLLMGenerator()
+                for i, sentence in enumerate(sentences)
+            ]
+
+    mock_generator = MockLLMGenerator()
+    mock_workflow = MockWorkflow()
+
+    monkeypatch.setattr(annotation_api, "llm_generator", mock_generator)
+    monkeypatch.setattr(annotation_api, "triplet_workflow", mock_workflow)
+
+    return mock_generator
 
 @pytest.fixture
 def mock_redis(monkeypatch):
@@ -217,7 +242,7 @@ def mock_monitoring(monkeypatch):
     
     class MockApplicationMonitor:
         def __init__(self, *args, **kwargs):
-            pass
+            self.metrics = MockMetricsCollector()
         
         async def start_monitoring(self, interval=60):
             pass
@@ -225,8 +250,10 @@ def mock_monitoring(monkeypatch):
         async def stop_monitoring(self):
             pass
         
-        def metrics(self):
-            return MockMetricsCollector()
+        def monitor_operation(self, operation_name, extra_data=None):
+            """Mock monitor_operation method"""
+            from utils.logging_config import LogOperation
+            return LogOperation(operation_name, extra_data=extra_data or {})
     
     class MockMetricsCollector:
         def increment_counter(self, *args, **kwargs):
