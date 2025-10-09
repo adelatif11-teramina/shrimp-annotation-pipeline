@@ -28,7 +28,7 @@ fi
 
 # Install critical deps quickly
 echo "📦 Installing key dependencies..."
-pip install -q fastapi uvicorn openai pyjwt bcrypt python-multipart
+python -m pip install -q fastapi uvicorn openai pyjwt bcrypt python-multipart pydantic-settings
 
 # Build frontend quickly
 echo "🔨 Building frontend..."

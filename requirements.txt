@@ -1,5 +1,6 @@
 # Core dependencies (Python 3.8+ required)
 pydantic>=2.0
+pydantic-settings>=2.0  # BaseSettings moved to separate package in Pydantic v2
 dataclasses-json>=0.5.7
 typing-extensions>=4.0
 

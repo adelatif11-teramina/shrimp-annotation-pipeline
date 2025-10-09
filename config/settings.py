@@ -7,7 +7,8 @@ import os
 from pathlib import Path
 from typing import Optional, List
 from functools import lru_cache
-from pydantic import BaseSettings, Field, validator
+from pydantic import Field, validator
+from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
 # Load environment variables

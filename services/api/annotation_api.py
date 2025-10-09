@@ -38,7 +38,7 @@ try:
 except ImportError as e:
     # Fallback for Railway deployment
     import os
-    from pydantic import BaseSettings
+    from pydantic_settings import BaseSettings
     
     class SimpleSettings(BaseSettings):
         environment: str = os.getenv("ENVIRONMENT", "production")
