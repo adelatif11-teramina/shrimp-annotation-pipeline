@@ -18,8 +18,8 @@
         "buildCommand": "pip install -r requirements.txt"
       },
       "deploy": {
-        "startCommand": "python scripts/start_server.py",
-        "healthcheckPath": "/health",
+        "startCommand": "bash railway_start.sh",
+        "healthcheckPath": "/api/health",
         "healthcheckTimeout": 30
       }
     }

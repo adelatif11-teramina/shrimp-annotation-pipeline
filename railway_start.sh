@@ -54,22 +54,18 @@ else
     ls -la | grep -E "(ui|package)"
 fi
 
-# Try PostgreSQL production API first if DATABASE_URL is set
-if [ -n "$DATABASE_URL" ]; then
-    echo "DATABASE_URL detected, setting up PostgreSQL and starting production API..."
-    
-    # Setup database if needed
-    python scripts/setup_railway_database.py
-    
-    if [ $? -eq 0 ]; then
-        echo "✅ Database setup successful, starting PostgreSQL production API"
-        exec python -m uvicorn services.api.production_api:app --host 0.0.0.0 --port $PORT --workers 1
-    else
-        echo "❌ PostgreSQL setup failed, falling back to in-memory API"
-        exec python -m uvicorn railway_api:app --host 0.0.0.0 --port $PORT --workers 1
-    fi
+# Try full production API first
+echo "🚀 Starting production API with full annotation features..."
+
+# Install missing dependencies if needed
+echo "📦 Installing production dependencies..."
+pip install -q redis>=4.5 pyjwt>=2.8 bcrypt>=4.0 python-multipart>=0.0.6 2>/dev/null || echo "⚠️ Some dependencies may be missing"
+
+# Try full annotation API with fallback
+if python -c "import services.api.annotation_api" 2>/dev/null; then
+    echo "✅ Full annotation API available, starting production server"
+    exec python railway_production_api.py
 else
-    echo "ℹ️ No DATABASE_URL found, starting Railway-compatible API"
-    echo "To use PostgreSQL, add a PostgreSQL service and set DATABASE_URL"
+    echo "⚠️ Full API not available, starting minimal Railway API"
     exec python -m uvicorn railway_api:app --host 0.0.0.0 --port $PORT --workers 1
 fi

@@ -1418,6 +1418,75 @@ async def restart_demo():
         "remaining_items": len(triage_queue_store)
     }
 
+# Add missing endpoints that the frontend is calling
+class DraftAnnotationRequest(BaseModel):
+    doc_id: str
+    sent_id: str
+    annotations: List[Dict[str, Any]]
+    user_id: Optional[str] = "anonymous"
+
+@app.post("/api/annotations/draft")
+async def save_draft_annotation(request: DraftAnnotationRequest):
+    """Save draft annotation"""
+    logger.info(f"Draft annotation saved for doc: {request.doc_id}, sent: {request.sent_id}")
+    return {
+        "status": "success",
+        "message": "Draft saved successfully",
+        "draft_id": f"draft_{request.doc_id}_{request.sent_id}",
+        "timestamp": datetime.now().isoformat()
+    }
+
+# Enhanced WebSocket for anonymous users
+from fastapi import WebSocket, WebSocketDisconnect
+
+@app.websocket("/ws/anonymous")
+async def websocket_anonymous(websocket: WebSocket):
+    """WebSocket endpoint for anonymous users"""
+    try:
+        await websocket.accept()
+        logger.info("Anonymous WebSocket connection accepted")
+        
+        # Send welcome message
+        await websocket.send_json({
+            "type": "connection",
+            "status": "connected",
+            "user": "anonymous",
+            "role": "annotator",
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        # Keep connection alive and handle messages
+        while True:
+            try:
+                data = await websocket.receive_json()
+                logger.info(f"WebSocket message received: {data.get('type', 'unknown')}")
+                
+                # Echo back with timestamp
+                await websocket.send_json({
+                    "type": "echo",
+                    "original": data,
+                    "timestamp": datetime.now().isoformat(),
+                    "status": "received"
+                })
+                
+            except WebSocketDisconnect:
+                logger.info("WebSocket client disconnected")
+                break
+            except Exception as e:
+                logger.error(f"WebSocket message error: {e}")
+                await websocket.send_json({
+                    "type": "error",
+                    "message": str(e),
+                    "timestamp": datetime.now().isoformat()
+                })
+                
+    except Exception as e:
+        logger.error(f"WebSocket connection error: {e}")
+        try:
+            await websocket.close()
+        except:
+            pass
+
 # Catch-all route MUST be last to serve React frontend for client-side routing
 @app.get("/{full_path:path}")
 async def serve_frontend_routes(full_path: str):
