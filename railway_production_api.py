@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Production Railway API with Full Annotation Features
+Enhanced Production Railway API with Full Annotation Features and Debugging
 """
 
 import os
 import sys
 import logging
+import traceback
 from pathlib import Path
 
 # Add the project root to Python path
@@ -18,26 +19,72 @@ os.environ.setdefault("API_HOST", "0.0.0.0")
 os.environ.setdefault("API_PORT", str(os.getenv("PORT", "8000")))
 os.environ.setdefault("LOG_LEVEL", "INFO")
 
-# Configure logging
+# Configure enhanced logging
 logging.basicConfig(
     level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
+# Enhanced startup logging
+logger.info("🚀 Railway Production API Starting...")
+logger.info(f"📂 Working directory: {os.getcwd()}")
+logger.info(f"🐍 Python path: {sys.path[:3]}...")
+logger.info(f"🌍 Environment: {os.getenv('ENVIRONMENT', 'unknown')}")
+logger.info(f"🔧 Port: {os.getenv('PORT', '8000')}")
+
+# Test critical imports with detailed error reporting
+logger.info("🔍 Testing critical imports...")
+import_status = {}
+
+try:
+    import fastapi
+    logger.info("✅ FastAPI imported successfully")
+    import_status['fastapi'] = True
+except ImportError as e:
+    logger.error(f"❌ FastAPI import failed: {e}")
+    import_status['fastapi'] = False
+
+try:
+    import openai
+    logger.info("✅ OpenAI client imported successfully")
+    import_status['openai'] = True
+except ImportError as e:
+    logger.error(f"❌ OpenAI import failed: {e}")
+    import_status['openai'] = False
+
 try:
     # Check for OpenAI API key
     openai_key = os.getenv("OPENAI_API_KEY")
     if not openai_key:
         logger.warning("⚠️ No OPENAI_API_KEY environment variable found in Railway")
-        logger.info("🔄 Please set OPENAI_API_KEY in Railway environment variables")
-        logger.info("   Go to Railway project → Variables → Add OPENAI_API_KEY")
+        logger.info("🔄 Triplet generation will use enhanced fallback mode")
     else:
         logger.info(f"✅ OpenAI API key found: {openai_key[:10]}...")
+    
+    # Test annotation API components step by step
+    logger.info("🧪 Testing annotation API components...")
+    
+    try:
+        from services.candidates.llm_candidate_generator import LLMCandidateGenerator
+        logger.info("✅ LLM Candidate Generator imported")
+        import_status['llm_generator'] = True
+    except ImportError as e:
+        logger.error(f"❌ LLM Generator import failed: {e}")
+        import_status['llm_generator'] = False
+    
+    try:
+        from services.candidates.triplet_workflow import TripletWorkflow  
+        logger.info("✅ Triplet Workflow imported")
+        import_status['triplet_workflow'] = True
+    except ImportError as e:
+        logger.error(f"❌ Triplet Workflow import failed: {e}")
+        import_status['triplet_workflow'] = False
     
     # Import the full annotation API
     from services.api.annotation_api import app
     logger.info("✅ Successfully imported full annotation API")
+    import_status['main_api'] = True
     
     # Add missing endpoints that the frontend expects
     from fastapi import HTTPException, Depends
@@ -200,7 +247,33 @@ try:
             logger.error(f"WebSocket connection error: {e}")
             await websocket.close()
     
-    logger.info("✅ Enhanced API with Railway-specific endpoints")
+    # Add comprehensive status endpoint for debugging
+    @app.get("/api/debug/status")
+    async def debug_status():
+        """Comprehensive API status for debugging"""
+        return {
+            "railway_api": "production",
+            "import_status": import_status,
+            "environment": {
+                "OPENAI_API_KEY": "configured" if openai_key else "missing",
+                "PORT": os.getenv("PORT"),
+                "ENVIRONMENT": os.getenv("ENVIRONMENT"),
+                "PYTHONPATH": os.getenv("PYTHONPATH", "")[:100]
+            },
+            "features": {
+                "triplet_generation": import_status.get('llm_generator', False) and import_status.get('triplet_workflow', False),
+                "openai_integration": import_status.get('openai', False) and bool(openai_key),
+                "full_api": import_status.get('main_api', False)
+            },
+            "endpoints": [
+                "/api/candidates/generate",
+                "/api/annotations/draft", 
+                "/api/debug/status",
+                "/api/health"
+            ]
+        }
+    
+    logger.info("✅ Enhanced API with Railway-specific endpoints and debugging")
     
 except ImportError as e:
     logger.error(f"❌ Failed to import full API: {e}")
