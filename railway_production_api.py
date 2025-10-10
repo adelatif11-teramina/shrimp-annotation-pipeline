@@ -88,7 +88,8 @@ try:
     
     # Add missing endpoints that the frontend expects
     from fastapi import HTTPException, Depends
-    from fastapi.responses import JSONResponse
+    from fastapi.responses import JSONResponse, FileResponse
+    from fastapi.staticfiles import StaticFiles
     from pydantic import BaseModel
     from typing import Optional, Dict, Any, List
     
