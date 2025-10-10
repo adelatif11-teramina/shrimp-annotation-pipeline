@@ -420,10 +420,19 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
         # Parse and validate the JSON response
         try:
             result = json.loads(content)
-            logger.info(f"🤖 [OPENAI] Generated {len(result.get('candidates', {}).get('triplets', []))} triplets")
+            triplet_count = len(result.get('candidates', {}).get('triplets', []))
+            logger.info(f"🤖 [OPENAI] Raw response: {content[:200]}...")
+            logger.info(f"🤖 [OPENAI] Generated {triplet_count} triplets")
+            
+            # If OpenAI returns 0 triplets, try mock generation
+            if triplet_count == 0:
+                logger.warning(f"⚠️ [OPENAI] Zero triplets returned, using mock fallback")
+                return generate_mock_triplets(sentence)
+            
             return result
         except json.JSONDecodeError as e:
             logger.error(f"❌ [OPENAI] Invalid JSON response: {e}")
+            logger.error(f"❌ [OPENAI] Raw content: {content}")
             # Fallback to mock if OpenAI returns invalid JSON
             return generate_mock_triplets(sentence)
 
