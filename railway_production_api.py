@@ -371,7 +371,12 @@ try:
                 sentence_request = SentenceRequest(**request.dict())
                 result = await generate_candidates(sentence_request, current_user=None)
                 logger.info("✅ [CANDIDATES] Used full annotation API")
-                return result
+                
+                # Convert Pydantic model to dict for Railway API compatibility
+                if hasattr(result, 'dict'):
+                    return result.dict()
+                else:
+                    return result
             except Exception as e:
                 logger.warning(f"⚠️ [CANDIDATES] Full API failed: {e}, trying OpenAI direct")
                 logger.warning(f"⚠️ [CANDIDATES] Full API error details: {type(e).__name__}: {str(e)}")
@@ -804,7 +809,12 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
         
         try:
             result = await generate_candidates_logic(test_request)
-            triplet_count = len(result.get('candidates', {}).get('triplets', []))
+            # Handle both dict and Pydantic model responses
+            if hasattr(result, 'candidates'):
+                candidates = result.candidates
+            else:
+                candidates = result.get('candidates', {})
+            triplet_count = len(candidates.get('triplets', []))
             logger.info(f"✅ [TEST] Generated {triplet_count} triplets successfully")
             
             return {
