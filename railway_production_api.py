@@ -363,11 +363,75 @@ try:
                 logger.info("✅ [CANDIDATES] Used full annotation API")
                 return result
             except Exception as e:
-                logger.warning(f"⚠️ [CANDIDATES] Full API failed: {e}, using fallback")
+                logger.warning(f"⚠️ [CANDIDATES] Full API failed: {e}, trying OpenAI direct")
         
-        # Fallback to mock generation
-        logger.info("🔄 [CANDIDATES] Using mock generation")
+        # Try direct OpenAI if available
+        if openai_key and import_status.get('openai', False):
+            try:
+                logger.info("🎯 [CANDIDATES] Trying direct OpenAI triplet generation")
+                result = await generate_openai_triplets(request.text)
+                logger.info("✅ [CANDIDATES] Used direct OpenAI generation")
+                return result
+            except Exception as e:
+                logger.warning(f"⚠️ [CANDIDATES] OpenAI direct failed: {e}, using mock")
+        
+        # Fallback to enhanced mock generation
+        logger.info("🔄 [CANDIDATES] Using enhanced mock generation")
         return generate_mock_triplets(request.text)
+
+    async def generate_openai_triplets(sentence: str) -> Dict[str, Any]:
+        """Direct OpenAI triplet generation using GPT-4o"""
+        
+        prompt = f"""Extract knowledge graph triplets from this shrimp aquaculture sentence.
+
+Sentence: {sentence}
+
+Return JSON with triplets in this format:
+{{
+  "candidates": {{
+    "triplets": [
+      {{
+        "triplet_id": "t1",
+        "head": {{"text": "entity1", "type": "PATHOGEN", "node_id": "e1"}},
+        "relation": "CAUSES", 
+        "tail": {{"text": "entity2", "type": "DISEASE", "node_id": "e2"}},
+        "evidence": "supporting text from sentence",
+        "confidence": 0.9
+      }}
+    ],
+    "entities": [],
+    "relations": [],
+    "topics": [],
+    "metadata": {{"audit_notes": "OpenAI GPT-4o generated"}}
+  }},
+  "triage_score": 0.8,
+  "processing_time": 0.3
+}}
+
+Entity types: PATHOGEN, DISEASE, SPECIES, CHEMICAL_COMPOUND, TREATMENT, TEST_TYPE, EQUIPMENT, LOCATION, MEASUREMENT, PROCESS, FEED
+Relations: CAUSES, AFFECTS, PREVENTS, DETECTS, TREATS, LOCATED_IN, MEASURED_BY, OCCURS_AT, USES
+Focus on high-confidence triplets that are clearly supported by the sentence text."""
+
+        client = openai.OpenAI(api_key=openai_key)
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            max_tokens=800
+        )
+        
+        import json
+        content = response.choices[0].message.content
+        
+        # Parse and validate the JSON response
+        try:
+            result = json.loads(content)
+            logger.info(f"🤖 [OPENAI] Generated {len(result.get('candidates', {}).get('triplets', []))} triplets")
+            return result
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ [OPENAI] Invalid JSON response: {e}")
+            # Fallback to mock if OpenAI returns invalid JSON
+            return generate_mock_triplets(sentence)
 
     def generate_mock_triplets(sentence: str) -> Dict[str, Any]:
         """Generate mock triplets based on sentence content"""
@@ -460,7 +524,16 @@ try:
             "features": {
                 "persistent_storage": True,
                 "single_triage_endpoint": True,
-                "simplified_routing": True
+                "simplified_routing": True,
+                "openai_triplet_generation": bool(openai_key and import_status.get('openai', False)),
+                "full_api_triplet_generation": import_status.get('main_api', False),
+                "triplet_generation_mode": "full_api" if import_status.get('main_api', False) else "openai_direct" if openai_key else "mock_fallback"
+            },
+            "triplet_generation": {
+                "openai_key_configured": bool(openai_key),
+                "openai_import_success": import_status.get('openai', False),
+                "full_api_available": import_status.get('main_api', False),
+                "current_mode": "full_api" if import_status.get('main_api', False) else "openai_direct" if (openai_key and import_status.get('openai', False)) else "mock_fallback"
             }
         }
     
