@@ -539,8 +539,47 @@ try:
     
     logger.info("✅ Enhanced API with Railway-specific endpoints and debugging")
     
-    # Static file serving handled by existing app configuration
-    logger.info("📁 Using existing static file serving configuration")
+    # Add frontend serving back (base API doesn't include it)
+    ui_build = Path(__file__).parent / "ui" / "build"
+    logger.info(f"📁 Frontend build directory: {ui_build} (exists: {ui_build.exists()})")
+    
+    if ui_build.exists():
+        # Mount static files for CSS/JS
+        try:
+            app.mount("/static", StaticFiles(directory=str(ui_build / "static")), name="static")
+            logger.info("✅ Mounted /static directory for frontend assets")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to mount static files: {e}")
+        
+        # Add React SPA serving with lower priority than API routes
+        @app.get("/", response_class=FileResponse)
+        async def serve_index():
+            """Serve React index.html for root path"""
+            return FileResponse(str(ui_build / "index.html"))
+        
+        @app.get("/dashboard", response_class=FileResponse) 
+        async def serve_dashboard():
+            """Serve React app for dashboard route"""
+            return FileResponse(str(ui_build / "index.html"))
+            
+        @app.get("/triage", response_class=FileResponse)
+        async def serve_triage():
+            """Serve React app for triage route"""
+            return FileResponse(str(ui_build / "index.html"))
+            
+        @app.get("/documents", response_class=FileResponse)
+        async def serve_documents():
+            """Serve React app for documents route"""  
+            return FileResponse(str(ui_build / "index.html"))
+            
+        @app.get("/annotate", response_class=FileResponse)
+        async def serve_annotate():
+            """Serve React app for annotate route"""
+            return FileResponse(str(ui_build / "index.html"))
+            
+        logger.info("✅ Added React frontend serving routes")
+    else:
+        logger.warning("⚠️ Frontend build directory not found")
     
     # Debug current routes
     logger.info("🔍 Final app routes:")
