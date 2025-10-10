@@ -92,6 +92,11 @@ try:
     from fastapi.staticfiles import StaticFiles
     from pydantic import BaseModel
     from typing import Optional, Dict, Any, List
+    import datetime
+    
+    # In-memory storage for uploaded documents (for Railway demo)
+    uploaded_documents = []
+    triage_items = []
     
     # Add draft annotation endpoint that frontend is calling
     class DraftAnnotationRequest(BaseModel):
@@ -254,7 +259,7 @@ try:
         """Get documents list"""
         logger.info(f"📄 Documents requested: limit={limit}, offset={offset}")
         
-        # Mock documents for Railway
+        # Start with mock documents
         mock_documents = [
             {
                 "doc_id": "doc_1",
@@ -276,12 +281,15 @@ try:
             }
         ]
         
+        # Add uploaded documents (newest first)
+        all_documents = uploaded_documents + mock_documents
+        
         return {
-            "documents": mock_documents,
-            "total": len(mock_documents),
+            "documents": all_documents[offset:offset+limit],
+            "total": len(all_documents),
             "limit": limit,
             "offset": offset,
-            "has_more": False
+            "has_more": offset + limit < len(all_documents)
         }
 
     @app.post("/api/documents/ingest")
@@ -294,21 +302,58 @@ try:
         content = request.get('content', request.get('text', ''))
         file_name = request.get('fileName', request.get('filename', 'upload.txt'))
         
-        # Mock successful ingestion
-        doc_id = f"doc_{len(title.split())}"  # Simple ID based on title length
+        # Create unique document ID
+        doc_id = f"uploaded_{len(uploaded_documents) + 1}"
+        timestamp = datetime.datetime.now().isoformat() + "Z"
+        
+        # Split content into sentences for processing
+        sentences = [s.strip() for s in content.split('.') if s.strip()]
+        sentence_count = len(sentences)
+        
+        # Add to uploaded documents
+        new_document = {
+            "doc_id": doc_id,
+            "title": title,
+            "sentence_count": sentence_count,
+            "annotation_count": 0,
+            "status": "ingested",
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "file_name": file_name
+        }
+        uploaded_documents.insert(0, new_document)  # Add to front (newest first)
+        
+        # Create triage items for sentences that need annotation
+        for i, sentence in enumerate(sentences[:3]):  # Limit to first 3 sentences for demo
+            if len(sentence) > 20:  # Only meaningful sentences
+                triage_item = {
+                    "item_id": len(triage_items) + 100,  # Unique ID
+                    "doc_id": doc_id,
+                    "sent_id": f"{doc_id}_sent_{i+1}",
+                    "text": sentence + ".",
+                    "priority_score": 0.8 + (0.1 * (3-i)),  # Higher priority for earlier sentences
+                    "confidence": 0.0,  # New, needs annotation
+                    "status": "pending",
+                    "created_at": timestamp,
+                    "metadata": {"source": "uploaded", "sentence_index": i}
+                }
+                triage_items.insert(0, triage_item)  # Add to front
+        
+        logger.info(f"✅ Document '{title}' added with {len(sentences)} sentences, {min(3, len([s for s in sentences if len(s) > 20]))} triage items created")
         
         return {
             "success": True,
             "doc_id": doc_id,
             "title": title,
             "status": "ingested",
-            "sentence_count": len(content.split('.')) if content else 0,
-            "created_at": "2024-01-01T00:00:00Z",
+            "sentence_count": sentence_count,
+            "created_at": timestamp,
+            "triage_items_created": min(3, len([s for s in sentences if len(s) > 20])),
             "message": f"Document '{title}' successfully ingested for annotation",
             "next_steps": [
-                "Document will be processed for sentence segmentation",
-                "LLM candidates will be generated", 
-                "Items will appear in triage queue for annotation"
+                f"Document processed into {sentence_count} sentences",
+                f"Created triage items for annotation",
+                "Items now available in triage queue"
             ]
         }
 
@@ -378,12 +423,23 @@ try:
             }
         ]
         
+        # Combine uploaded triage items with mock items (uploaded first)
+        all_items = triage_items + mock_items
+        
+        # Filter by status if specified
+        if status and status != "undefined":
+            all_items = [item for item in all_items if item["status"] == status]
+        
+        # Sort by priority if requested
+        if sort_by == "priority":
+            all_items = sorted(all_items, key=lambda x: x["priority_score"], reverse=True)
+        
         return {
-            "items": mock_items,
-            "total": len(mock_items),
+            "items": all_items[offset:offset+limit],
+            "total": len(all_items),
             "limit": limit,
             "offset": offset,
-            "has_more": False
+            "has_more": offset + limit < len(all_items)
         }
 
     # Add comprehensive status endpoint for debugging
