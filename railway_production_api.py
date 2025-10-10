@@ -27,7 +27,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Enhanced startup logging
-logger.info("🚀 Railway Production API Starting... [SIMPLIFIED VERSION]")
+logger.info("🚀 Railway Production API Starting... [SIMPLIFIED VERSION - Updated OpenAI Key]")
 logger.info(f"📂 Working directory: {os.getcwd()}")
 logger.info(f"🐍 Python path: {sys.path[:3]}...")
 logger.info(f"🌍 Environment: {os.getenv('ENVIRONMENT', 'unknown')}")
