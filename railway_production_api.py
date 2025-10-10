@@ -360,14 +360,20 @@ try:
         logger.info("🎯 [CANDIDATES] Skipping full API due to Railway performance issues, using direct OpenAI")
         
         # Try direct OpenAI if available
+        logger.info(f"🔍 [CANDIDATES] Checking OpenAI availability...")
+        logger.info(f"🔍 [CANDIDATES] openai_key available: {bool(openai_key)}")
+        logger.info(f"🔍 [CANDIDATES] openai import status: {import_status.get('openai', False)}")
+        
         if openai_key and import_status.get('openai', False):
             try:
-                logger.info("🎯 [CANDIDATES] Trying direct OpenAI triplet generation")
+                logger.info("🎯 [CANDIDATES] ✅ CONDITIONS MET - Trying direct OpenAI triplet generation")
                 result = await generate_openai_triplets(request.text)
                 logger.info("✅ [CANDIDATES] Used direct OpenAI generation")
                 return result
             except Exception as e:
                 logger.warning(f"⚠️ [CANDIDATES] OpenAI direct failed: {e}, using mock")
+        else:
+            logger.warning(f"⚠️ [CANDIDATES] OpenAI conditions NOT met - key:{bool(openai_key)}, import:{import_status.get('openai', False)}")
         
         # Fallback to enhanced mock generation
         logger.info("🔄 [CANDIDATES] Using enhanced mock generation")
