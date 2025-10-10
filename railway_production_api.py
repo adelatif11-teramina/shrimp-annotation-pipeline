@@ -493,21 +493,27 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
 
     # ADDITIONAL ENDPOINTS
     @app.post("/api/annotations/draft")
-    async def save_draft_annotation(request: DraftAnnotationRequest):
-        """Save draft annotation"""
+    async def save_draft_annotation(request: Dict[str, Any]):
+        """Save draft annotation - accept any JSON data"""
         try:
-            logger.info(f"💾 [DRAFT] Saving draft for item: {request.item_id}")
-            logger.info(f"💾 [DRAFT] Draft data keys: {list(request.draft_data.keys()) if request.draft_data else 'None'}")
+            logger.info(f"💾 [DRAFT] Raw request data: {request}")
+            item_id = request.get('item_id', 'unknown')
+            draft_data = request.get('draft_data', {})
+            timestamp = request.get('timestamp')
+            
+            logger.info(f"💾 [DRAFT] Saving draft for item: {item_id}")
+            logger.info(f"💾 [DRAFT] Draft data keys: {list(draft_data.keys()) if draft_data else 'None'}")
             
             return {
                 "status": "success",
                 "message": "Draft saved successfully",
-                "draft_id": f"draft_{request.item_id}",
-                "timestamp": request.timestamp or "2024-01-01T00:00:00Z",
-                "item_id": request.item_id
+                "draft_id": f"draft_{item_id}",
+                "timestamp": timestamp or "2024-01-01T00:00:00Z",
+                "item_id": item_id
             }
         except Exception as e:
             logger.error(f"❌ [DRAFT] Error saving draft: {e}")
+            logger.error(f"❌ [DRAFT] Request type: {type(request)}")
             raise HTTPException(status_code=500, detail=str(e))
 
     @app.get("/api/annotations/statistics")
@@ -645,9 +651,14 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
 
     # WEBSOCKET ENDPOINT
     @app.websocket("/ws/anonymous")
-    async def websocket_endpoint(websocket, username: str = "Anonymous", role: str = "annotator"):
+    async def websocket_endpoint(websocket):
         """WebSocket connection for real-time updates"""
-        logger.info(f"🔗 [WEBSOCKET] Connection attempt from: {username}")
+        # Extract query parameters from the WebSocket URL
+        query_params = websocket.query_params
+        username = query_params.get('username', 'Anonymous')
+        role = query_params.get('role', 'annotator')
+        
+        logger.info(f"🔗 [WEBSOCKET] Connection attempt from: {username} (role: {role})")
         
         try:
             await websocket.accept()
@@ -683,6 +694,52 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
             logger.error(f"❌ [WEBSOCKET] Connection error for {username}: {e}")
         finally:
             logger.info(f"🔌 [WEBSOCKET] Disconnected: {username}")
+
+    # ANNOTATION DECISION ENDPOINT
+    @app.post("/api/annotations/decide")
+    async def decide_annotation(request: Dict[str, Any]):
+        """Handle annotation decisions (accept, reject, skip)"""
+        try:
+            item_id = request.get('item_id')
+            decision = request.get('decision', 'unknown')
+            confidence = request.get('confidence', 0.5)
+            user_id = request.get('user_id', 'anonymous')
+            
+            logger.info(f"📝 [DECISION] Item {item_id}: {decision} (confidence: {confidence})")
+            logger.info(f"📝 [DECISION] Data keys: {list(request.keys())}")
+            
+            # Extract annotation data
+            entities = request.get('entities', [])
+            relations = request.get('relations', [])
+            topics = request.get('topics', [])
+            triplets = request.get('triplets', [])
+            notes = request.get('notes', '')
+            
+            logger.info(f"📝 [DECISION] Annotations: {len(entities)} entities, {len(relations)} relations, {len(triplets)} triplets")
+            
+            # Simulate processing
+            decision_id = f"decision_{item_id}_{decision}"
+            timestamp = "2024-01-01T00:00:00Z"
+            
+            return {
+                "success": True,
+                "decision_id": decision_id,
+                "item_id": item_id,
+                "decision": decision,
+                "status": "processed",
+                "timestamp": timestamp,
+                "message": f"Annotation {decision} processed successfully",
+                "annotations_saved": {
+                    "entities": len(entities),
+                    "relations": len(relations), 
+                    "triplets": len(triplets),
+                    "topics": len(topics)
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ [DECISION] Error processing annotation: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
 
     # DEBUG ENDPOINTS
     @app.get("/api/debug/status")

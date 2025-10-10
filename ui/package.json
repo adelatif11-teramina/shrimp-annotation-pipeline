@@ -1,6 +1,6 @@
 {
   "name": "shrimp-annotation-ui",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Custom annotation UI for shrimp aquaculture domain",
   "main": "src/index.js",
   "scripts": {
