@@ -502,6 +502,14 @@ try:
     
     logger.info("✅ Enhanced API with Railway-specific endpoints and debugging")
     
+    # Debug current routes
+    logger.info("🔍 Current app routes:")
+    for route in app.routes:
+        if hasattr(route, 'path'):
+            logger.info(f"  📍 {route.path} ({route.methods if hasattr(route, 'methods') else 'N/A'})")
+        else:
+            logger.info(f"  📍 {type(route).__name__}")
+    
 except ImportError as e:
     logger.error(f"❌ Failed to import full API: {e}")
     logger.info("🔄 Falling back to Railway minimal API")
