@@ -86,6 +86,10 @@ try:
     logger.info("✅ Successfully imported full annotation API")
     import_status['main_api'] = True
     
+    # CRITICAL: Remove catch-all route that might be intercepting our requests
+    logger.info("🔧 Removing catch-all routes that conflict with custom endpoints")
+    app.routes = [route for route in app.routes if not (hasattr(route, 'path_regex') and '{full_path:path}' in str(route.path_regex))]
+    
     # Add missing endpoints that the frontend expects
     from fastapi import HTTPException, Depends
     from fastapi.responses import JSONResponse, FileResponse
@@ -534,8 +538,20 @@ try:
     
     logger.info("✅ Enhanced API with Railway-specific endpoints and debugging")
     
+    # Re-add static file serving for frontend (removed by catch-all cleanup)
+    ui_build = Path(__file__).parent / "ui" / "build"
+    if ui_build.exists():
+        app.mount("/static", StaticFiles(directory=str(ui_build / "static")), name="static")
+        
+        @app.get("/{full_path:path}")
+        async def serve_react_app(full_path: str):
+            if full_path.startswith("api/"):
+                raise HTTPException(404, f"API endpoint /{full_path} not found")
+            index_file = ui_build / "index.html"
+            return FileResponse(str(index_file)) if index_file.exists() else HTTPException(404)
+    
     # Debug current routes
-    logger.info("🔍 Current app routes:")
+    logger.info("🔍 Final app routes:")
     for route in app.routes:
         if hasattr(route, 'path'):
             logger.info(f"  📍 {route.path} ({route.methods if hasattr(route, 'methods') else 'N/A'})")
