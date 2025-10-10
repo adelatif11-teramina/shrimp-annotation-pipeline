@@ -356,30 +356,8 @@ try:
         """Generate candidates - try full API first, fallback to mock"""
         logger.info(f"🎯 [CANDIDATES] Requested for: {request.text[:50]}...")
         
-        # Try full API first if available
-        if import_status.get('main_api', False):
-            try:
-                from services.api.annotation_api import generate_candidates
-                from pydantic import BaseModel
-                
-                class SentenceRequest(BaseModel):
-                    doc_id: str
-                    sent_id: str
-                    text: str
-                    title: Optional[str] = None
-                
-                sentence_request = SentenceRequest(**request.dict())
-                result = await generate_candidates(sentence_request, current_user=None)
-                logger.info("✅ [CANDIDATES] Used full annotation API")
-                
-                # Convert Pydantic model to dict for Railway API compatibility
-                if hasattr(result, 'dict'):
-                    return result.dict()
-                else:
-                    return result
-            except Exception as e:
-                logger.warning(f"⚠️ [CANDIDATES] Full API failed: {e}, trying OpenAI direct")
-                logger.warning(f"⚠️ [CANDIDATES] Full API error details: {type(e).__name__}: {str(e)}")
+        # Skip full API due to timeout issues in Railway, use direct OpenAI
+        logger.info("🎯 [CANDIDATES] Skipping full API due to Railway performance issues, using direct OpenAI")
         
         # Try direct OpenAI if available
         if openai_key and import_status.get('openai', False):
