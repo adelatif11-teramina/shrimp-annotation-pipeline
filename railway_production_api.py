@@ -447,11 +447,21 @@ try:
             "uploaded_items_count": len(triage_items)
         }
     
-    @app.get("/api/triage/queue", operation_id="get_triage_queue_with_uploads")
+    # USE DIFFERENT PATH TO AVOID ANY CONFLICTS
+    @app.get("/api/triage-with-uploads/queue", operation_id="get_triage_queue_with_uploads") 
     async def get_triage_queue_custom(limit: int = 100, offset: int = 0, status: str = None, sort_by: str = None):
         """Get triage queue items [ENHANCED VERSION v2.1]"""
         logger.info(f"🎯🎯🎯 [CUSTOM ENDPOINT FINALLY HIT!!!] Triage queue requested: limit={limit}, status={status}")
         logger.info(f"📊📊📊 [CUSTOM ENDPOINT SUCCESS] Current storage: {len(triage_items)} uploaded items")
+        
+        # Also add BACKUP endpoint at the original path with different method
+        return await get_triage_queue_items(limit, offset, status, sort_by)
+
+    @app.get("/api/triage/queue", operation_id="override_triage_queue")
+    async def get_triage_queue_items(limit: int = 100, offset: int = 0, status: str = None, sort_by: str = None):
+        """BACKUP: Override original triage queue with uploads"""
+        logger.info(f"🚨🚨🚨 [BACKUP ENDPOINT HIT] Triage queue override: limit={limit}, status={status}")
+        logger.info(f"🚨🚨🚨 [BACKUP SUCCESS] Storage has: {len(triage_items)} uploaded items")
         
         # Mock triage items
         mock_items = [
