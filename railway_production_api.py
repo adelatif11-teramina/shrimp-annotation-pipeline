@@ -396,6 +396,38 @@ try:
             }
         }
 
+    # Add endpoint with different path to test if routing conflicts exist
+    @app.get("/api/triage/queue-custom")
+    async def get_triage_queue_test(limit: int = 100, offset: int = 0, status: str = None, sort_by: str = None):
+        """Test endpoint to verify our logic works"""
+        logger.info(f"🧪 [TEST ENDPOINT] Custom triage queue called: limit={limit}, status={status}")
+        logger.info(f"🧪 [TEST ENDPOINT] Storage has: {len(triage_items)} uploaded items")
+        
+        # Simplified response to test
+        mock_items = [
+            {
+                "item_id": 999,
+                "doc_id": "test",
+                "sent_id": "test_sent_1",
+                "text": "TEST: This proves our custom endpoint logic works!",
+                "priority_score": 0.99,
+                "confidence": 0.0,
+                "status": "pending",
+                "created_at": "2024-01-01T00:00:00Z"
+            }
+        ]
+        
+        # Combine with uploaded items
+        all_items = triage_items + mock_items
+        logger.info(f"🧪 [TEST ENDPOINT] Returning {len(all_items)} total items")
+        
+        return {
+            "items": all_items,
+            "total": len(all_items),
+            "test_mode": True,
+            "uploaded_items_count": len(triage_items)
+        }
+    
     @app.get("/api/triage/queue")
     async def get_triage_queue_custom(limit: int = 100, offset: int = 0, status: str = None, sort_by: str = None):
         """Get triage queue items [ENHANCED VERSION v2.1]"""
