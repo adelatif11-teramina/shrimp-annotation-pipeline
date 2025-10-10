@@ -523,6 +523,167 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
             "pending_documents": 1
         }
 
+    # MISSING ENDPOINTS THAT FRONTEND EXPECTS
+    @app.get("/api/statistics/overview")
+    async def get_statistics_overview():
+        """Get overview statistics for dashboard"""
+        logger.info("📊 [STATS] Overview statistics requested")
+        return {
+            "total_documents": 3,
+            "total_annotations": 35,
+            "total_candidates": 67,
+            "active_users": 1,
+            "pending_triage_items": 5,
+            "completed_annotations": 15,
+            "annotation_rate": 0.75,
+            "avg_confidence": 0.82
+        }
+
+    @app.get("/api/triage/next")
+    async def get_next_triage_item():
+        """Get next item from triage queue"""
+        logger.info("⏭️ [TRIAGE] Next item requested")
+        
+        # Load from persistent storage
+        stored_docs, stored_items = load_storage()
+        
+        # Mock next item
+        if stored_items:
+            next_item = stored_items[0]  # Return first item
+            logger.info(f"⏭️ [TRIAGE] Returning uploaded item: {next_item.get('item_id')}")
+            return next_item
+        
+        # Fallback mock item
+        return {
+            "item_id": 1,
+            "doc_id": "doc_1",
+            "sent_id": "sent_1", 
+            "text": "White Spot Syndrome Virus (WSSV) is one of the most devastating pathogens affecting Pacific white shrimp.",
+            "priority_score": 0.95,
+            "confidence": 0.8,
+            "status": "pending",
+            "created_at": "2024-01-01T00:00:00Z"
+        }
+
+    @app.get("/api/annotations")
+    async def get_annotations(
+        sort_by: str = "created_at",
+        limit: int = 20,
+        offset: int = 0,
+        status: Optional[str] = None
+    ):
+        """Get annotations list"""
+        logger.info(f"📝 [ANNOTATIONS] List requested: sort_by={sort_by}, limit={limit}")
+        
+        # Mock annotations
+        mock_annotations = [
+            {
+                "annotation_id": 1,
+                "doc_id": "doc_1",
+                "sent_id": "sent_1",
+                "text": "WSSV causes severe mortality in shrimp farms.",
+                "entities": [
+                    {"text": "WSSV", "type": "PATHOGEN", "start": 0, "end": 4}
+                ],
+                "relations": [
+                    {"head": "WSSV", "relation": "CAUSES", "tail": "mortality"}
+                ],
+                "status": "completed",
+                "confidence": 0.9,
+                "annotator": "anonymous", 
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-01T01:00:00Z"
+            },
+            {
+                "annotation_id": 2,
+                "doc_id": "doc_2", 
+                "sent_id": "sent_2",
+                "text": "PCR screening helps detect viral pathogens early.",
+                "entities": [
+                    {"text": "PCR screening", "type": "TEST_TYPE", "start": 0, "end": 13}
+                ],
+                "relations": [
+                    {"head": "PCR screening", "relation": "DETECTS", "tail": "viral pathogens"}
+                ],
+                "status": "pending",
+                "confidence": 0.85,
+                "annotator": "anonymous",
+                "created_at": "2024-01-01T02:00:00Z", 
+                "updated_at": "2024-01-01T03:00:00Z"
+            }
+        ]
+        
+        # Filter by status if specified
+        if status:
+            mock_annotations = [ann for ann in mock_annotations if ann["status"] == status]
+        
+        return {
+            "annotations": mock_annotations[offset:offset+limit],
+            "total": len(mock_annotations),
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + limit < len(mock_annotations)
+        }
+
+    @app.get("/api/triage/statistics")
+    async def get_triage_statistics():
+        """Get triage queue statistics"""
+        logger.info("📊 [TRIAGE] Statistics requested")
+        
+        # Load from persistent storage
+        stored_docs, stored_items = load_storage()
+        
+        return {
+            "total_items": len(stored_items) + 5,  # Include uploaded + mock items
+            "pending_items": len(stored_items) + 3,
+            "in_progress_items": 2,
+            "completed_items": 0,
+            "avg_priority_score": 0.85,
+            "avg_confidence": 0.7,
+            "uploaded_items": len(stored_items)
+        }
+
+    # WEBSOCKET ENDPOINT
+    @app.websocket("/ws/anonymous")
+    async def websocket_endpoint(websocket, username: str = "Anonymous", role: str = "annotator"):
+        """WebSocket connection for real-time updates"""
+        logger.info(f"🔗 [WEBSOCKET] Connection attempt from: {username}")
+        
+        try:
+            await websocket.accept()
+            logger.info(f"✅ [WEBSOCKET] Connected: {username}")
+            
+            # Send welcome message
+            await websocket.send_json({
+                "type": "connection",
+                "status": "connected",
+                "user": username,
+                "role": role,
+                "timestamp": "2024-01-01T00:00:00Z"
+            })
+            
+            # Keep connection alive
+            while True:
+                try:
+                    data = await websocket.receive_json()
+                    logger.info(f"📨 [WEBSOCKET] Message from {username}: {data.get('type', 'unknown')}")
+                    
+                    # Echo back
+                    await websocket.send_json({
+                        "type": "echo",
+                        "original": data,
+                        "timestamp": "2024-01-01T00:00:00Z"
+                    })
+                    
+                except Exception as e:
+                    logger.warning(f"⚠️ [WEBSOCKET] Message error for {username}: {e}")
+                    break
+                    
+        except Exception as e:
+            logger.error(f"❌ [WEBSOCKET] Connection error for {username}: {e}")
+        finally:
+            logger.info(f"🔌 [WEBSOCKET] Disconnected: {username}")
+
     # DEBUG ENDPOINTS
     @app.get("/api/debug/status")
     async def debug_status():
@@ -548,7 +709,25 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
                 "openai_import_success": import_status.get('openai', False),
                 "full_api_available": import_status.get('main_api', False),
                 "current_mode": "full_api" if import_status.get('main_api', False) else "openai_direct" if (openai_key and import_status.get('openai', False)) else "mock_fallback"
-            }
+            },
+            "available_endpoints": [
+                "/api/health",
+                "/api/triage/queue", 
+                "/api/triage/next",
+                "/api/triage/statistics",
+                "/api/documents",
+                "/api/documents/ingest (POST)",
+                "/api/candidates/generate (POST)",
+                "/candidates/generate (POST)",
+                "/api/annotations",
+                "/api/annotations/draft (POST)",
+                "/api/annotations/statistics",
+                "/api/statistics/overview",
+                "/ws/anonymous (WebSocket)",
+                "/api/debug/status",
+                "/api/debug/test-triplets", 
+                "/api/debug/storage"
+            ]
         }
     
     @app.get("/api/debug/test-triplets")
