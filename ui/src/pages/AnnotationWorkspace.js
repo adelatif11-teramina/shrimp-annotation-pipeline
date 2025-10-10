@@ -124,6 +124,7 @@ function AnnotationWorkspace() {
     submitAnnotation, 
     getNextItem,
     skipItem,
+    generateCandidates,
     isLoading 
   } = useAnnotationAPI();
 
@@ -225,10 +226,41 @@ function AnnotationWorkspace() {
       
       setCurrentItem(item);
       
-      const candidateEntities = item?.candidate_data?.entities || item?.entities || [];
-      const candidateRelations = item?.candidate_data?.relations || item?.relations || [];
-      const candidateTopics = item?.candidate_data?.topics || item?.topics || [];
-      const candidateTriplets = item?.candidate_data?.triplets || item?.triplets || [];
+      // Generate candidates for the sentence if not already present
+      let candidateEntities = item?.candidate_data?.entities || item?.entities || [];
+      let candidateRelations = item?.candidate_data?.relations || item?.relations || [];
+      let candidateTopics = item?.candidate_data?.topics || item?.topics || [];
+      let candidateTriplets = item?.candidate_data?.triplets || item?.triplets || [];
+      
+      // If no triplets are present, generate them using the LLM
+      if (candidateTriplets.length === 0 && item?.text) {
+        try {
+          console.log('🎯 Generating candidates for sentence:', item.text.substring(0, 50) + '...');
+          const candidateResponse = await generateCandidates({
+            doc_id: item.doc_id || `doc_${item.item_id}`,
+            sent_id: item.sent_id || `sent_${item.item_id}`,
+            text: item.text,
+            title: item.title || 'Untitled Document'
+          });
+          
+          // Extract candidates from response
+          if (candidateResponse?.candidates) {
+            candidateEntities = candidateResponse.candidates.entities || [];
+            candidateRelations = candidateResponse.candidates.relations || [];
+            candidateTopics = candidateResponse.candidates.topics || [];
+            candidateTriplets = candidateResponse.candidates.triplets || [];
+            console.log('✅ Generated candidates:', {
+              entities: candidateEntities.length,
+              relations: candidateRelations.length,
+              topics: candidateTopics.length,
+              triplets: candidateTriplets.length
+            });
+          }
+        } catch (error) {
+          console.error('❌ Failed to generate candidates:', error);
+          // Continue with empty candidates on error
+        }
+      }
 
       if (candidateEntities.length > 0) {
         const mappedEntities = candidateEntities.map((entity, index) => ({
