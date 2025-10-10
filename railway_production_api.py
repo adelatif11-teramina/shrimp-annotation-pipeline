@@ -362,7 +362,9 @@ try:
         # Try direct OpenAI if available
         logger.info(f"🔍 [CANDIDATES] Checking OpenAI availability...")
         logger.info(f"🔍 [CANDIDATES] openai_key available: {bool(openai_key)}")
+        logger.info(f"🔍 [CANDIDATES] openai_key value: {openai_key[:15] if openai_key else 'None'}...")
         logger.info(f"🔍 [CANDIDATES] openai import status: {import_status.get('openai', False)}")
+        logger.info(f"🔍 [CANDIDATES] OPENAI_API_KEY env: {bool(os.getenv('OPENAI_API_KEY'))}")
         
         if openai_key and import_status.get('openai', False):
             try:
@@ -795,7 +797,8 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
                 "openai_key_configured": bool(openai_key),
                 "openai_import_success": import_status.get('openai', False),
                 "full_api_available": import_status.get('main_api', False),
-                "current_mode": "full_api" if import_status.get('main_api', False) else "openai_direct" if (openai_key and import_status.get('openai', False)) else "mock_fallback"
+                "full_api_disabled": True,  # Explicitly disabled due to timeout issues
+                "current_mode": "openai_direct" if (openai_key and import_status.get('openai', False)) else "mock_fallback"
             },
             "available_endpoints": [
                 "/api/health",
