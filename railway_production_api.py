@@ -429,16 +429,20 @@ try:
         # Combine uploaded triage items with mock items (uploaded first)
         all_items = triage_items + mock_items
         
-        # Filter by status if specified
-        if status and status != "undefined":
+        # Filter by status if specified (but ignore "undefined")
+        if status and status != "undefined" and status != "null" and status.lower() != "all items":
             all_items = [item for item in all_items if item["status"] == status]
+            logger.info(f"🔍 Filtered items by status '{status}': {len(all_items)} items remaining")
         
         # Sort by priority if requested
         if sort_by == "priority":
             all_items = sorted(all_items, key=lambda x: x["priority_score"], reverse=True)
         
+        final_items = all_items[offset:offset+limit]
+        logger.info(f"🎯 Returning {len(final_items)} items out of {len(all_items)} total")
+        
         return {
-            "items": all_items[offset:offset+limit],
+            "items": final_items,
             "total": len(all_items),
             "limit": limit,
             "offset": offset,
