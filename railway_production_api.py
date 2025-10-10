@@ -397,10 +397,10 @@ try:
         }
 
     @app.get("/api/triage/queue")
-    async def get_triage_queue(limit: int = 100, offset: int = 0, status: str = None, sort_by: str = None):
+    async def get_triage_queue_custom(limit: int = 100, offset: int = 0, status: str = None, sort_by: str = None):
         """Get triage queue items [ENHANCED VERSION v2.1]"""
-        logger.info(f"🎯 [v2.1] Triage queue requested: limit={limit}, status={status}")
-        logger.info(f"📊 [v2.1] Current storage: {len(triage_items)} uploaded items, will combine with mock items")
+        logger.info(f"🎯 [CUSTOM ENDPOINT HIT] Triage queue requested: limit={limit}, status={status}")
+        logger.info(f"📊 [CUSTOM ENDPOINT] Current storage: {len(triage_items)} uploaded items")
         
         # Mock triage items
         mock_items = [
