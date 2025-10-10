@@ -94,38 +94,103 @@ try:
     from typing import Optional, Dict, Any, List
     import datetime
     
-    # PERSISTENT storage for uploaded documents (survives container restarts)
+    # ROBUST persistent storage with detailed logging
     import json
+    import os
     storage_file = Path("/tmp/railway_storage.json")
     
     def load_storage():
-        """Load storage from file"""
+        """Load storage from file with detailed logging"""
         try:
+            logger.info(f"🔍 Loading storage from: {storage_file} (exists: {storage_file.exists()})")
             if storage_file.exists():
+                file_size = storage_file.stat().st_size
+                logger.info(f"📁 Storage file size: {file_size} bytes")
                 with open(storage_file, 'r') as f:
                     data = json.load(f)
-                return data.get('uploaded_documents', []), data.get('triage_items', [])
+                docs = data.get('uploaded_documents', [])
+                items = data.get('triage_items', [])
+                logger.info(f"✅ Loaded from storage: {len(docs)} docs, {len(items)} items")
+                return docs, items
+            else:
+                logger.info("📂 No storage file found, starting with empty storage")
         except Exception as e:
-            logger.warning(f"Failed to load storage: {e}")
+            logger.error(f"❌ Failed to load storage: {e}")
         return [], []
     
     def save_storage(documents, items):
-        """Save storage to file"""
+        """Save storage to file with detailed logging"""
         try:
+            logger.info(f"💾 Attempting to save: {len(documents)} docs, {len(items)} items to {storage_file}")
+            
+            # Ensure directory exists
+            storage_file.parent.mkdir(parents=True, exist_ok=True)
+            
             data = {
                 'uploaded_documents': documents,
                 'triage_items': items,
-                'timestamp': datetime.datetime.now().isoformat()
+                'timestamp': datetime.datetime.now().isoformat(),
+                'save_count': len(documents) + len(items)
             }
-            with open(storage_file, 'w') as f:
-                json.dump(data, f)
-            logger.info(f"💾 Saved storage: {len(documents)} docs, {len(items)} items")
+            
+            # Write to temporary file first, then rename (atomic operation)
+            temp_file = storage_file.with_suffix('.tmp')
+            with open(temp_file, 'w') as f:
+                json.dump(data, f, indent=2)
+            
+            # Atomic rename
+            temp_file.rename(storage_file)
+            
+            # Verify the save worked
+            verify_size = storage_file.stat().st_size if storage_file.exists() else 0
+            logger.info(f"✅ Successfully saved storage: {len(documents)} docs, {len(items)} items ({verify_size} bytes)")
+            
         except Exception as e:
-            logger.error(f"Failed to save storage: {e}")
+            logger.error(f"❌ Failed to save storage: {e}")
+            logger.error(f"❌ Current working dir: {os.getcwd()}")
+            logger.error(f"❌ /tmp permissions: {oct(os.stat('/tmp').st_mode)}")
     
     # Load existing storage
     uploaded_documents, triage_items = load_storage()
     logger.info(f"📂 Loaded storage: {len(uploaded_documents)} docs, {len(triage_items)} items")
+    
+    # MONKEY PATCH: Override the existing route handlers directly
+    logger.info("🔧 Monkey-patching existing route handlers to include uploaded items")
+    
+    # Find and override the existing triage queue handler
+    for route in app.routes:
+        if hasattr(route, 'path') and route.path == '/triage/queue':
+            logger.info("🎯 Found /triage/queue route, monkey-patching it")
+            original_handler = route.endpoint
+            
+            async def patched_triage_handler(*args, **kwargs):
+                logger.info("🚀 MONKEY-PATCH: Triage handler called with uploaded items!")
+                stored_docs, stored_items = load_storage()
+                
+                # Call original handler and modify response
+                try:
+                    original_response = await original_handler(*args, **kwargs)
+                    if isinstance(original_response, dict) and 'items' in original_response:
+                        # Add uploaded items to the original response
+                        original_items = original_response.get('items', [])
+                        all_items = stored_items + original_items
+                        original_response['items'] = all_items
+                        original_response['total'] = len(all_items)
+                        original_response['uploaded_count'] = len(stored_items)
+                        logger.info(f"✅ MONKEY-PATCH: Enhanced response with {len(stored_items)} uploaded items")
+                    return original_response
+                except Exception as e:
+                    logger.error(f"Error in monkey-patch: {e}")
+                    # Fallback response
+                    return {
+                        "items": stored_items,
+                        "total": len(stored_items),
+                        "uploaded_count": len(stored_items),
+                        "fallback": True
+                    }
+            
+            route.endpoint = patched_triage_handler
+            break
     
     # Add our custom endpoints FIRST with highest priority
     @app.get("/api/triage/queue", operation_id="priority_triage_queue")
