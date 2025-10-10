@@ -481,16 +481,27 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
         sentence_lower = sentence.lower()
         mock_triplets = []
         
-        # WSSV/Virus patterns - more inclusive matching
-        if any(word in sentence_lower for word in ['wssv', 'white spot', 'virus', 'affects', 'mortality']):
-            mock_triplets.append({
-                "triplet_id": "mock_1",
-                "head": {"text": "White Spot Syndrome Virus", "type": "PATHOGEN", "node_id": "wssv"},
-                "relation": "AFFECTS",
-                "tail": {"text": "Pacific white shrimp", "type": "SPECIES", "node_id": "shrimp"},
-                "evidence": "White spot syndrome virus affects Pacific white shrimp",
-                "confidence": 0.90
-            })
+        # Disease/Pathogen patterns - comprehensive matching
+        if any(word in sentence_lower for word in ['wssv', 'white spot', 'virus', 'affects', 'mortality', 'disease', 'pathogen', 'infection', 'syndrome', 'larvae']):
+            # Choose appropriate entities based on sentence content
+            if 'translucent' in sentence_lower or 'post-larvae' in sentence_lower or 'tpd' in sentence_lower:
+                mock_triplets.append({
+                    "triplet_id": "mock_1",
+                    "head": {"text": "TPD", "type": "DISEASE", "node_id": "tpd"},
+                    "relation": "AFFECTS", 
+                    "tail": {"text": "post-larvae", "type": "SPECIES", "node_id": "larvae"},
+                    "evidence": "TPD affects post-larvae development",
+                    "confidence": 0.88
+                })
+            else:
+                mock_triplets.append({
+                    "triplet_id": "mock_1", 
+                    "head": {"text": "White Spot Syndrome Virus", "type": "PATHOGEN", "node_id": "wssv"},
+                    "relation": "AFFECTS",
+                    "tail": {"text": "Pacific white shrimp", "type": "SPECIES", "node_id": "shrimp"},
+                    "evidence": "White spot syndrome virus affects Pacific white shrimp",
+                    "confidence": 0.90
+                })
         
         # PCR/Detection patterns
         if any(word in sentence_lower for word in ['pcr', 'detect', 'screen']):
