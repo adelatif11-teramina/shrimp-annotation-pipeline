@@ -340,9 +340,19 @@ try:
             "message": f"Document '{title}' successfully ingested for annotation"
         }
 
-    # CANDIDATES GENERATION
+    # CANDIDATES GENERATION - Support both /api/candidates/generate and /candidates/generate
     @app.post("/api/candidates/generate")
     async def generate_candidates_endpoint(request: CandidateRequest):
+        """Generate candidates - API version"""
+        return await generate_candidates_logic(request)
+    
+    @app.post("/candidates/generate") 
+    async def generate_candidates_original(request: CandidateRequest):
+        """Generate candidates - Original API path (frontend calls this)"""
+        logger.info("🎯 [FRONTEND] Called original /candidates/generate endpoint")
+        return await generate_candidates_logic(request)
+    
+    async def generate_candidates_logic(request: CandidateRequest):
         """Generate candidates - try full API first, fallback to mock"""
         logger.info(f"🎯 [CANDIDATES] Requested for: {request.text[:50]}...")
         
@@ -364,6 +374,7 @@ try:
                 return result
             except Exception as e:
                 logger.warning(f"⚠️ [CANDIDATES] Full API failed: {e}, trying OpenAI direct")
+                logger.warning(f"⚠️ [CANDIDATES] Full API error details: {type(e).__name__}: {str(e)}")
         
         # Try direct OpenAI if available
         if openai_key and import_status.get('openai', False):
@@ -537,6 +548,40 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
             }
         }
     
+    @app.get("/api/debug/test-triplets")
+    async def test_triplet_generation():
+        """Test triplet generation with a sample sentence"""
+        test_sentence = "White Spot Syndrome Virus (WSSV) is one of the most devastating pathogens affecting Pacific white shrimp."
+        
+        logger.info(f"🧪 [TEST] Testing triplet generation for: {test_sentence[:50]}...")
+        
+        # Create test request
+        test_request = CandidateRequest(
+            doc_id="test_doc",
+            sent_id="test_sent_1", 
+            text=test_sentence,
+            title="Test Document"
+        )
+        
+        try:
+            result = await generate_candidates_logic(test_request)
+            triplet_count = len(result.get('candidates', {}).get('triplets', []))
+            logger.info(f"✅ [TEST] Generated {triplet_count} triplets successfully")
+            
+            return {
+                "test_sentence": test_sentence,
+                "triplets_generated": triplet_count,
+                "generation_successful": True,
+                "result": result
+            }
+        except Exception as e:
+            logger.error(f"❌ [TEST] Triplet generation failed: {e}")
+            return {
+                "test_sentence": test_sentence,
+                "error": str(e),
+                "generation_successful": False
+            }
+
     @app.get("/api/debug/storage")
     async def debug_storage():
         """Debug persistent storage state"""
