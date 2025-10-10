@@ -86,10 +86,24 @@ try:
     logger.info("✅ Successfully imported full annotation API")
     import_status['main_api'] = True
     
-    # CRITICAL: Log routes but don't modify them (routes is read-only)
-    logger.info("🔧 Checking for conflicting routes")
-    catch_all_routes = [route for route in app.routes if hasattr(route, 'path_regex') and '{full_path:path}' in str(route.path_regex)]
-    logger.info(f"🔍 Found {len(catch_all_routes)} catch-all routes that might conflict")
+    # CRITICAL: Try to remove conflicting triage endpoints 
+    logger.info("🔧 Removing conflicting /triage/queue routes")
+    original_routes = list(app.routes)
+    new_routes = []
+    
+    for route in original_routes:
+        # Skip routes that conflict with our custom endpoints
+        if hasattr(route, 'path') and route.path in ['/triage/queue', '/api/triage/queue']:
+            logger.info(f"🗑️ Removing conflicting route: {route.path}")
+            continue
+        new_routes.append(route)
+    
+    # Clear and rebuild routes list
+    app.router.routes.clear()
+    for route in new_routes:
+        app.router.routes.append(route)
+        
+    logger.info(f"🔧 Removed conflicting routes, {len(app.routes)} routes remaining")
     
     # Add missing endpoints that the frontend expects
     from fastapi import HTTPException, Depends
@@ -436,8 +450,8 @@ try:
     @app.get("/api/triage/queue", operation_id="get_triage_queue_with_uploads")
     async def get_triage_queue_custom(limit: int = 100, offset: int = 0, status: str = None, sort_by: str = None):
         """Get triage queue items [ENHANCED VERSION v2.1]"""
-        logger.info(f"🎯 [CUSTOM ENDPOINT HIT] Triage queue requested: limit={limit}, status={status}")
-        logger.info(f"📊 [CUSTOM ENDPOINT] Current storage: {len(triage_items)} uploaded items")
+        logger.info(f"🎯🎯🎯 [CUSTOM ENDPOINT FINALLY HIT!!!] Triage queue requested: limit={limit}, status={status}")
+        logger.info(f"📊📊📊 [CUSTOM ENDPOINT SUCCESS] Current storage: {len(triage_items)} uploaded items")
         
         # Mock triage items
         mock_items = [
