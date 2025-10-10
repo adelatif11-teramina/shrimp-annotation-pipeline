@@ -262,12 +262,12 @@ def generate_smart_mock_triplets(sentence: str) -> Dict[str, Any]:
         }
     }
 
-# Triage queue endpoint
+# Triage queue endpoint  
 @app.get("/api/triage/queue")
 async def get_triage_queue(
     status: Optional[str] = None,
     sort_by: Optional[str] = None,
-    limit: int = 50,
+    limit: int = 100,  # Match frontend default
     offset: int = 0
 ):
     """Get triage queue items"""
@@ -363,6 +363,91 @@ async def websocket_endpoint(websocket, user_id: str):
 async def anonymous_websocket(websocket):
     """Anonymous WebSocket connection"""
     return await websocket_endpoint(websocket, "anonymous")
+
+# Documents endpoint
+@app.get("/api/documents")
+async def get_documents(limit: int = 50, offset: int = 0):
+    """Get documents list"""
+    logger.info(f"📄 Documents requested: limit={limit}, offset={offset}")
+    
+    # Mock documents that match frontend expectations
+    mock_documents = [
+        {
+            "doc_id": "doc_1",
+            "title": "White Spot Syndrome Virus in Pacific White Shrimp",
+            "sentence_count": 45,
+            "annotation_count": 12,
+            "status": "annotated",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T12:00:00Z"
+        },
+        {
+            "doc_id": "doc_2", 
+            "title": "PCR Detection Methods for Aquaculture Pathogens",
+            "sentence_count": 32,
+            "annotation_count": 8,
+            "status": "pending",
+            "created_at": "2024-01-01T01:00:00Z",
+            "updated_at": "2024-01-01T13:00:00Z"
+        },
+        {
+            "doc_id": "doc_3",
+            "title": "Vibrio parahaemolyticus Disease Management",
+            "sentence_count": 28,
+            "annotation_count": 15,
+            "status": "completed",
+            "created_at": "2024-01-01T02:00:00Z", 
+            "updated_at": "2024-01-01T14:00:00Z"
+        }
+    ]
+    
+    return {
+        "documents": mock_documents,
+        "total": len(mock_documents),
+        "limit": limit,
+        "offset": offset,
+        "has_more": False
+    }
+
+# Annotations statistics endpoint
+@app.get("/api/annotations/statistics")
+async def get_annotation_statistics():
+    """Get annotation statistics"""
+    logger.info("📊 Annotation statistics requested")
+    
+    return {
+        "total_annotations": 35,
+        "completed_annotations": 15,
+        "pending_annotations": 12,
+        "in_progress_annotations": 8,
+        "total_documents": 3,
+        "annotated_documents": 1,
+        "pending_documents": 1,
+        "completed_documents": 1,
+        "total_sentences": 105,
+        "annotated_sentences": 35,
+        "entity_counts": {
+            "PATHOGEN": 8,
+            "DISEASE": 6,
+            "SPECIES": 4,
+            "CHEMICAL_COMPOUND": 3,
+            "TEST_TYPE": 5,
+            "MANAGEMENT_PRACTICE": 2
+        },
+        "relation_counts": {
+            "CAUSES": 6,
+            "AFFECTS": 4,
+            "PREVENTS": 3,
+            "DETECTS": 5,
+            "TREATS": 2
+        },
+        "triplet_counts": {
+            "total_triplets": 20,
+            "high_confidence": 12,
+            "medium_confidence": 6,
+            "low_confidence": 2
+        }
+    }
 
 # Draft annotations
 @app.post("/api/annotations/draft")
