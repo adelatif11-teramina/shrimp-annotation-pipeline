@@ -818,6 +818,22 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
                 "generation_successful": False
             }
 
+    @app.get("/api/debug/test-mock")
+    async def test_mock_generation():
+        """Test mock triplet generation directly"""
+        test_sentence = "White spot syndrome virus affects Pacific white shrimp causing mortality."
+        logger.info(f"🧪 [MOCK] Testing mock generation for: {test_sentence}")
+        
+        result = generate_mock_triplets(test_sentence)
+        triplet_count = len(result.get('candidates', {}).get('triplets', []))
+        
+        return {
+            "test_sentence": test_sentence,
+            "triplets_generated": triplet_count,
+            "mock_successful": True,
+            "result": result
+        }
+
     @app.get("/api/debug/storage")
     async def debug_storage():
         """Debug persistent storage state"""
