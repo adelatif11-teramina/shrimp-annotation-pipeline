@@ -154,9 +154,9 @@ try:
     
     # REQUEST MODELS
     class DraftAnnotationRequest(BaseModel):
-        doc_id: str
-        sent_id: str
-        annotations: List[Dict[str, Any]]
+        item_id: str
+        draft_data: Dict[str, Any]
+        timestamp: Optional[str] = None
         user_id: Optional[str] = "anonymous"
     
     class CandidateRequest(BaseModel):
@@ -496,15 +496,18 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
     async def save_draft_annotation(request: DraftAnnotationRequest):
         """Save draft annotation"""
         try:
-            logger.info(f"Draft annotation saved for doc: {request.doc_id}, sent: {request.sent_id}")
+            logger.info(f"💾 [DRAFT] Saving draft for item: {request.item_id}")
+            logger.info(f"💾 [DRAFT] Draft data keys: {list(request.draft_data.keys()) if request.draft_data else 'None'}")
+            
             return {
                 "status": "success",
                 "message": "Draft saved successfully",
-                "draft_id": f"draft_{request.doc_id}_{request.sent_id}",
-                "timestamp": "2024-01-01T00:00:00Z"
+                "draft_id": f"draft_{request.item_id}",
+                "timestamp": request.timestamp or "2024-01-01T00:00:00Z",
+                "item_id": request.item_id
             }
         except Exception as e:
-            logger.error(f"Error saving draft: {e}")
+            logger.error(f"❌ [DRAFT] Error saving draft: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
     @app.get("/api/annotations/statistics")
@@ -683,6 +686,11 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
             
         @app.get("/annotate", response_class=FileResponse)
         async def serve_annotate():
+            return FileResponse(str(ui_build / "index.html"))
+            
+        @app.get("/annotate/{item_id}", response_class=FileResponse)
+        async def serve_annotate_item(item_id: str):
+            """Serve React app for annotate/1, annotate/2, etc."""
             return FileResponse(str(ui_build / "index.html"))
         
         # DO NOT add catch-all /{full_path:path} route - it breaks API endpoints!
