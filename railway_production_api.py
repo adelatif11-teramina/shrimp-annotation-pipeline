@@ -27,7 +27,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Enhanced startup logging
-logger.info("🚀 Railway Production API Starting...")
+logger.info("🚀 Railway Production API Starting... [LATEST VERSION WITH TRIAGE DEBUG]")
 logger.info(f"📂 Working directory: {os.getcwd()}")
 logger.info(f"🐍 Python path: {sys.path[:3]}...")
 logger.info(f"🌍 Environment: {os.getenv('ENVIRONMENT', 'unknown')}")
@@ -398,9 +398,9 @@ try:
 
     @app.get("/api/triage/queue")
     async def get_triage_queue(limit: int = 100, offset: int = 0, status: str = None, sort_by: str = None):
-        """Get triage queue items"""
-        logger.info(f"🎯 Triage queue requested: limit={limit}, status={status}")
-        logger.info(f"📊 Current storage: {len(triage_items)} uploaded items, will combine with {len(mock_items)} mock items")
+        """Get triage queue items [ENHANCED VERSION v2.1]"""
+        logger.info(f"🎯 [v2.1] Triage queue requested: limit={limit}, status={status}")
+        logger.info(f"📊 [v2.1] Current storage: {len(triage_items)} uploaded items, will combine with mock items")
         
         # Mock triage items
         mock_items = [

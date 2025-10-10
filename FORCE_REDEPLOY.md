@@ -2,7 +2,12 @@
 
 This file forces Railway to redeploy with the latest configuration.
 
-Timestamp: 2025-10-09 19:45:00
+Timestamp: 2025-10-10 09:45:00
+
+## CRITICAL ISSUE - Railway not deploying latest code
+- Triage queue enhanced logging is missing from deployment logs
+- Storage shows items exist but frontend gets empty response
+- Need to force Railway to use latest triage queue endpoint with debugging
 
 ## Latest Changes (Not Yet Deployed)
 - Fixed db_password to be Optional in settings.py
