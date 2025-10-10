@@ -130,9 +130,12 @@ try:
     # Add our custom endpoints FIRST with highest priority
     @app.get("/api/triage/queue", operation_id="priority_triage_queue")
     async def priority_triage_queue(limit: int = 100, offset: int = 0, status: str = None, sort_by: str = None):
-        """PRIORITY: Get triage queue with uploaded items"""
+        """PRIORITY: Get triage queue with uploaded items from persistent storage"""
         logger.info(f"🎯🎯🎯 [PRIORITY ENDPOINT HIT!!!] Triage queue: limit={limit}, status={status}")
-        logger.info(f"📊📊📊 [PRIORITY SUCCESS] Storage: {len(triage_items)} uploaded items")
+        
+        # Load from persistent storage  
+        stored_docs, stored_items = load_storage()
+        logger.info(f"📊📊📊 [PRIORITY SUCCESS] Storage: {len(stored_items)} uploaded items")
         
         # Mock items for demo
         mock_items = [
@@ -148,14 +151,15 @@ try:
             }
         ]
         
-        # Combine with uploaded items
-        all_items = triage_items + mock_items
+        # Combine with uploaded items from storage
+        all_items = stored_items + mock_items
         
         return {
             "items": all_items,
             "total": len(all_items),
-            "uploaded_count": len(triage_items),
-            "priority_endpoint": True
+            "uploaded_count": len(stored_items),
+            "priority_endpoint": True,
+            "from_storage": True
         }
     
     # CRITICAL: Try to remove conflicting triage endpoints 
@@ -347,8 +351,12 @@ try:
     # Add missing frontend endpoints
     @app.get("/api/documents")
     async def get_documents(limit: int = 50, offset: int = 0):
-        """Get documents list"""
+        """Get documents list with persistent storage"""
         logger.info(f"📄 Documents requested: limit={limit}, offset={offset}")
+        
+        # Load from persistent storage
+        stored_docs, stored_items = load_storage()
+        logger.info(f"📂 Documents endpoint loaded: {len(stored_docs)} docs from storage")
         
         # Start with mock documents
         mock_documents = [
@@ -372,15 +380,16 @@ try:
             }
         ]
         
-        # Add uploaded documents (newest first)
-        all_documents = uploaded_documents + mock_documents
+        # Add uploaded documents from persistent storage (newest first)
+        all_documents = stored_docs + mock_documents
         
         return {
             "documents": all_documents[offset:offset+limit],
             "total": len(all_documents),
             "limit": limit,
             "offset": offset,
-            "has_more": offset + limit < len(all_documents)
+            "has_more": offset + limit < len(all_documents),
+            "from_storage": len(stored_docs)
         }
 
     @app.post("/api/documents/ingest")
