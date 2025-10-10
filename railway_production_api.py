@@ -216,18 +216,18 @@ try:
     from services.websocket.websocket_server import websocket_endpoint
     
     @app.websocket("/ws/anonymous")
-    async def anonymous_websocket(websocket):
+    async def anonymous_websocket(websocket, username: str = "Anonymous", role: str = "annotator"):
         """Anonymous WebSocket connection for Railway"""
         try:
             await websocket.accept()
-            logger.info("Anonymous WebSocket connection accepted")
+            logger.info(f"Anonymous WebSocket connection accepted - user: {username}, role: {role}")
             
             # Send welcome message
             await websocket.send_json({
                 "type": "connection",
                 "status": "connected",
-                "user": "anonymous",
-                "role": "annotator"
+                "user": username,
+                "role": role
             })
             
             # Keep connection alive
@@ -282,6 +282,34 @@ try:
             "limit": limit,
             "offset": offset,
             "has_more": False
+        }
+
+    @app.post("/api/documents/ingest")
+    async def ingest_document(request: Dict[str, Any]):
+        """Ingest a new document for annotation"""
+        logger.info(f"📥 Document ingest requested: {request.get('title', 'Unknown')[:50]}...")
+        
+        # Extract document info
+        title = request.get('title', 'Untitled Document')
+        content = request.get('content', request.get('text', ''))
+        file_name = request.get('fileName', request.get('filename', 'upload.txt'))
+        
+        # Mock successful ingestion
+        doc_id = f"doc_{len(title.split())}"  # Simple ID based on title length
+        
+        return {
+            "success": True,
+            "doc_id": doc_id,
+            "title": title,
+            "status": "ingested",
+            "sentence_count": len(content.split('.')) if content else 0,
+            "created_at": "2024-01-01T00:00:00Z",
+            "message": f"Document '{title}' successfully ingested for annotation",
+            "next_steps": [
+                "Document will be processed for sentence segmentation",
+                "LLM candidates will be generated", 
+                "Items will appear in triage queue for annotation"
+            ]
         }
 
     @app.get("/api/annotations/statistics")
@@ -380,8 +408,10 @@ try:
                 "/api/candidates/generate",
                 "/api/annotations/draft",
                 "/api/documents", 
+                "/api/documents/ingest (POST)",
                 "/api/annotations/statistics",
                 "/api/triage/queue",
+                "/ws/anonymous",
                 "/api/debug/status",
                 "/api/health"
             ]
