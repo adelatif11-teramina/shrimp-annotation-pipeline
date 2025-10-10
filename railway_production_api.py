@@ -376,6 +376,10 @@ try:
     async def generate_openai_triplets(sentence: str) -> Dict[str, Any]:
         """Direct OpenAI triplet generation using GPT-4o"""
         
+        logger.info(f"🤖 [OPENAI] Starting generation for: {sentence[:50]}...")
+        logger.info(f"🤖 [OPENAI] API Key available: {bool(openai_key)}")
+        logger.info(f"🤖 [OPENAI] API Key prefix: {openai_key[:10] if openai_key else 'None'}...")
+        
         prompt = f"""Extract knowledge graph triplets from this shrimp aquaculture sentence.
 
 Sentence: {sentence}
@@ -406,34 +410,62 @@ Entity types: PATHOGEN, DISEASE, SPECIES, CHEMICAL_COMPOUND, TREATMENT, TEST_TYP
 Relations: CAUSES, AFFECTS, PREVENTS, DETECTS, TREATS, LOCATED_IN, MEASURED_BY, OCCURS_AT, USES
 Focus on high-confidence triplets that are clearly supported by the sentence text."""
 
-        client = openai.OpenAI(api_key=openai_key)
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-            max_tokens=800
-        )
-        
-        import json
-        content = response.choices[0].message.content
+        try:
+            logger.info(f"🤖 [OPENAI] Creating client with model: gpt-4o")
+            client = openai.OpenAI(api_key=openai_key)
+            
+            logger.info(f"🤖 [OPENAI] Sending request to OpenAI...")
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=800
+            )
+            
+            import json
+            content = response.choices[0].message.content
+            logger.info(f"🤖 [OPENAI] Response received, length: {len(content)} chars")
+            logger.info(f"🤖 [OPENAI] Response preview: {content[:100]}...")
+            
+        except Exception as openai_error:
+            logger.error(f"❌ [OPENAI] API call failed: {type(openai_error).__name__}: {openai_error}")
+            logger.error(f"❌ [OPENAI] Falling back to mock immediately")
+            return generate_mock_triplets(sentence)
         
         # Parse and validate the JSON response
         try:
+            logger.info(f"🔍 [OPENAI] Parsing JSON response...")
             result = json.loads(content)
-            triplet_count = len(result.get('candidates', {}).get('triplets', []))
-            logger.info(f"🤖 [OPENAI] Raw response: {content[:200]}...")
-            logger.info(f"🤖 [OPENAI] Generated {triplet_count} triplets")
             
-            # If OpenAI returns 0 triplets, try mock generation
+            # Detailed analysis of the response structure
+            logger.info(f"🔍 [OPENAI] Response keys: {list(result.keys())}")
+            
+            candidates = result.get('candidates', {})
+            if isinstance(candidates, dict):
+                triplets = candidates.get('triplets', [])
+                entities = candidates.get('entities', [])
+                logger.info(f"🔍 [OPENAI] Candidates structure: triplets={len(triplets)}, entities={len(entities)}")
+            else:
+                triplets = []
+                logger.warning(f"⚠️ [OPENAI] Unexpected candidates type: {type(candidates)}")
+                
+            triplet_count = len(triplets)
+            logger.info(f"🤖 [OPENAI] Final triplet count: {triplet_count}")
+            
+            # If OpenAI returns 0 triplets, investigate why
             if triplet_count == 0:
-                logger.warning(f"⚠️ [OPENAI] Zero triplets returned, using mock fallback")
+                logger.warning(f"⚠️ [OPENAI] ZERO TRIPLETS - Investigating...")
+                logger.warning(f"⚠️ [OPENAI] Full response: {json.dumps(result, indent=2)}")
+                logger.warning(f"⚠️ [OPENAI] Using mock fallback due to empty response")
                 return generate_mock_triplets(sentence)
             
+            logger.info(f"✅ [OPENAI] Successfully generated {triplet_count} triplets")
             return result
+            
         except json.JSONDecodeError as e:
-            logger.error(f"❌ [OPENAI] Invalid JSON response: {e}")
-            logger.error(f"❌ [OPENAI] Raw content: {content}")
-            # Fallback to mock if OpenAI returns invalid JSON
+            logger.error(f"❌ [OPENAI] JSON parsing failed: {e}")
+            logger.error(f"❌ [OPENAI] Raw content (first 500 chars): {content[:500]}")
+            logger.error(f"❌ [OPENAI] Using mock fallback due to JSON error")
             return generate_mock_triplets(sentence)
 
     def generate_mock_triplets(sentence: str) -> Dict[str, Any]:
@@ -833,6 +865,27 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
             "mock_successful": True,
             "result": result
         }
+
+    @app.get("/api/debug/test-openai-direct")
+    async def test_openai_direct():
+        """Test OpenAI generation directly without fallback"""
+        test_sentence = "White spot syndrome virus affects Pacific white shrimp causing mortality."
+        logger.info(f"🧪 [OPENAI-DIRECT] Testing direct OpenAI for: {test_sentence}")
+        
+        try:
+            result = await generate_openai_triplets(test_sentence)
+            return {
+                "test_sentence": test_sentence,
+                "openai_successful": True,
+                "result": result
+            }
+        except Exception as e:
+            logger.error(f"❌ [OPENAI-DIRECT] Failed: {e}")
+            return {
+                "test_sentence": test_sentence,
+                "openai_successful": False,
+                "error": str(e)
+            }
 
     @app.get("/api/debug/storage")
     async def debug_storage():
