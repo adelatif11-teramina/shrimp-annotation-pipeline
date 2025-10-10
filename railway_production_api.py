@@ -339,7 +339,9 @@ try:
                 }
                 triage_items.insert(0, triage_item)  # Add to front
         
-        logger.info(f"✅ Document '{title}' added with {len(sentences)} sentences, {min(3, len([s for s in sentences if len(s) > 20]))} triage items created")
+        triage_created = min(3, len([s for s in sentences if len(s) > 20]))
+        logger.info(f"✅ Document '{title}' added with {len(sentences)} sentences, {triage_created} triage items created")
+        logger.info(f"📊 Storage state: {len(uploaded_documents)} documents, {len(triage_items)} triage items")
         
         return {
             "success": True,
@@ -398,6 +400,7 @@ try:
     async def get_triage_queue(limit: int = 100, offset: int = 0, status: str = None, sort_by: str = None):
         """Get triage queue items"""
         logger.info(f"🎯 Triage queue requested: limit={limit}, status={status}")
+        logger.info(f"📊 Current storage: {len(triage_items)} uploaded items, will combine with {len(mock_items)} mock items")
         
         # Mock triage items
         mock_items = [
@@ -469,8 +472,28 @@ try:
                 "/api/triage/queue",
                 "/ws/anonymous",
                 "/api/debug/status",
+                "/api/debug/storage",
                 "/api/health"
             ]
+        }
+    
+    # Add storage debug endpoint
+    @app.get("/api/debug/storage")
+    async def debug_storage():
+        """Debug in-memory storage state"""
+        return {
+            "uploaded_documents": {
+                "count": len(uploaded_documents),
+                "documents": uploaded_documents
+            },
+            "triage_items": {
+                "count": len(triage_items),
+                "items": triage_items
+            },
+            "memory_info": {
+                "documents_memory_id": id(uploaded_documents),
+                "triage_memory_id": id(triage_items)
+            }
         }
     
     logger.info("✅ Enhanced API with Railway-specific endpoints and debugging")
