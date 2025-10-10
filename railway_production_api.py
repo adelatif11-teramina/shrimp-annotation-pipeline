@@ -441,15 +441,15 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
         sentence_lower = sentence.lower()
         mock_triplets = []
         
-        # WSSV/Virus patterns
-        if any(word in sentence_lower for word in ['wssv', 'white spot', 'virus']):
+        # WSSV/Virus patterns - more inclusive matching
+        if any(word in sentence_lower for word in ['wssv', 'white spot', 'virus', 'affects', 'mortality']):
             mock_triplets.append({
                 "triplet_id": "mock_1",
-                "head": {"text": "WSSV", "type": "PATHOGEN", "node_id": "wssv"},
-                "relation": "CAUSES",
-                "tail": {"text": "AHPND", "type": "DISEASE", "node_id": "ahpnd"},
-                "evidence": "WSSV causes AHPND",
-                "confidence": 0.85
+                "head": {"text": "White Spot Syndrome Virus", "type": "PATHOGEN", "node_id": "wssv"},
+                "relation": "AFFECTS",
+                "tail": {"text": "Pacific white shrimp", "type": "SPECIES", "node_id": "shrimp"},
+                "evidence": "White spot syndrome virus affects Pacific white shrimp",
+                "confidence": 0.90
             })
         
         # PCR/Detection patterns
