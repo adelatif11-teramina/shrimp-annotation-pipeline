@@ -86,9 +86,10 @@ try:
     logger.info("✅ Successfully imported full annotation API")
     import_status['main_api'] = True
     
-    # CRITICAL: Remove catch-all route that might be intercepting our requests
-    logger.info("🔧 Removing catch-all routes that conflict with custom endpoints")
-    app.routes = [route for route in app.routes if not (hasattr(route, 'path_regex') and '{full_path:path}' in str(route.path_regex))]
+    # CRITICAL: Log routes but don't modify them (routes is read-only)
+    logger.info("🔧 Checking for conflicting routes")
+    catch_all_routes = [route for route in app.routes if hasattr(route, 'path_regex') and '{full_path:path}' in str(route.path_regex)]
+    logger.info(f"🔍 Found {len(catch_all_routes)} catch-all routes that might conflict")
     
     # Add missing endpoints that the frontend expects
     from fastapi import HTTPException, Depends
@@ -400,8 +401,8 @@ try:
             }
         }
 
-    # Add endpoint with different path to test if routing conflicts exist
-    @app.get("/api/triage/queue-custom")
+    # Override approach: Add endpoints with explicit operation_id to ensure they take precedence
+    @app.get("/api/triage/queue-custom", operation_id="get_triage_queue_test_custom")
     async def get_triage_queue_test(limit: int = 100, offset: int = 0, status: str = None, sort_by: str = None):
         """Test endpoint to verify our logic works"""
         logger.info(f"🧪 [TEST ENDPOINT] Custom triage queue called: limit={limit}, status={status}")
@@ -432,7 +433,7 @@ try:
             "uploaded_items_count": len(triage_items)
         }
     
-    @app.get("/api/triage/queue")
+    @app.get("/api/triage/queue", operation_id="get_triage_queue_with_uploads")
     async def get_triage_queue_custom(limit: int = 100, offset: int = 0, status: str = None, sort_by: str = None):
         """Get triage queue items [ENHANCED VERSION v2.1]"""
         logger.info(f"🎯 [CUSTOM ENDPOINT HIT] Triage queue requested: limit={limit}, status={status}")
@@ -538,17 +539,8 @@ try:
     
     logger.info("✅ Enhanced API with Railway-specific endpoints and debugging")
     
-    # Re-add static file serving for frontend (removed by catch-all cleanup)
-    ui_build = Path(__file__).parent / "ui" / "build"
-    if ui_build.exists():
-        app.mount("/static", StaticFiles(directory=str(ui_build / "static")), name="static")
-        
-        @app.get("/{full_path:path}")
-        async def serve_react_app(full_path: str):
-            if full_path.startswith("api/"):
-                raise HTTPException(404, f"API endpoint /{full_path} not found")
-            index_file = ui_build / "index.html"
-            return FileResponse(str(index_file)) if index_file.exists() else HTTPException(404)
+    # Static file serving handled by existing app configuration
+    logger.info("📁 Using existing static file serving configuration")
     
     # Debug current routes
     logger.info("🔍 Final app routes:")
