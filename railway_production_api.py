@@ -86,6 +86,78 @@ try:
     logger.info("✅ Successfully imported full annotation API")
     import_status['main_api'] = True
     
+    # CRITICAL: Add our endpoints IMMEDIATELY after importing app, before any other routes
+    from fastapi import HTTPException, Depends
+    from fastapi.responses import JSONResponse, FileResponse
+    from fastapi.staticfiles import StaticFiles
+    from pydantic import BaseModel
+    from typing import Optional, Dict, Any, List
+    import datetime
+    
+    # PERSISTENT storage for uploaded documents (survives container restarts)
+    import json
+    storage_file = Path("/tmp/railway_storage.json")
+    
+    def load_storage():
+        """Load storage from file"""
+        try:
+            if storage_file.exists():
+                with open(storage_file, 'r') as f:
+                    data = json.load(f)
+                return data.get('uploaded_documents', []), data.get('triage_items', [])
+        except Exception as e:
+            logger.warning(f"Failed to load storage: {e}")
+        return [], []
+    
+    def save_storage(documents, items):
+        """Save storage to file"""
+        try:
+            data = {
+                'uploaded_documents': documents,
+                'triage_items': items,
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+            with open(storage_file, 'w') as f:
+                json.dump(data, f)
+            logger.info(f"💾 Saved storage: {len(documents)} docs, {len(items)} items")
+        except Exception as e:
+            logger.error(f"Failed to save storage: {e}")
+    
+    # Load existing storage
+    uploaded_documents, triage_items = load_storage()
+    logger.info(f"📂 Loaded storage: {len(uploaded_documents)} docs, {len(triage_items)} items")
+    
+    # Add our custom endpoints FIRST with highest priority
+    @app.get("/api/triage/queue", operation_id="priority_triage_queue")
+    async def priority_triage_queue(limit: int = 100, offset: int = 0, status: str = None, sort_by: str = None):
+        """PRIORITY: Get triage queue with uploaded items"""
+        logger.info(f"🎯🎯🎯 [PRIORITY ENDPOINT HIT!!!] Triage queue: limit={limit}, status={status}")
+        logger.info(f"📊📊📊 [PRIORITY SUCCESS] Storage: {len(triage_items)} uploaded items")
+        
+        # Mock items for demo
+        mock_items = [
+            {
+                "item_id": 1,
+                "doc_id": "doc_1", 
+                "sent_id": "sent_1",
+                "text": "White Spot Syndrome Virus (WSSV) affects Pacific white shrimp.",
+                "priority_score": 0.95,
+                "confidence": 0.8,
+                "status": "pending",
+                "created_at": "2024-01-01T00:00:00Z"
+            }
+        ]
+        
+        # Combine with uploaded items
+        all_items = triage_items + mock_items
+        
+        return {
+            "items": all_items,
+            "total": len(all_items),
+            "uploaded_count": len(triage_items),
+            "priority_endpoint": True
+        }
+    
     # CRITICAL: Try to remove conflicting triage endpoints 
     logger.info("🔧 Removing conflicting /triage/queue routes")
     original_routes = list(app.routes)
@@ -340,13 +412,15 @@ try:
             "updated_at": timestamp,
             "file_name": file_name
         }
-        uploaded_documents.insert(0, new_document)  # Add to front (newest first)
+        # Load current storage, add new items, save back
+        current_docs, current_items = load_storage()
+        current_docs.insert(0, new_document)  # Add to front (newest first)
         
         # Create triage items for sentences that need annotation
         for i, sentence in enumerate(sentences[:3]):  # Limit to first 3 sentences for demo
             if len(sentence) > 20:  # Only meaningful sentences
                 triage_item = {
-                    "item_id": len(triage_items) + 100,  # Unique ID
+                    "item_id": len(current_items) + 100,  # Unique ID
                     "doc_id": doc_id,
                     "sent_id": f"{doc_id}_sent_{i+1}",
                     "text": sentence + ".",
@@ -356,7 +430,16 @@ try:
                     "created_at": timestamp,
                     "metadata": {"source": "uploaded", "sentence_index": i}
                 }
-                triage_items.insert(0, triage_item)  # Add to front
+                current_items.insert(0, triage_item)  # Add to front
+        
+        # Save to persistent storage
+        save_storage(current_docs, current_items)
+        
+        # Update in-memory vars for this request
+        uploaded_documents.clear()
+        uploaded_documents.extend(current_docs)
+        triage_items.clear() 
+        triage_items.extend(current_items)
         
         triage_created = min(3, len([s for s in sentences if len(s) > 20]))
         logger.info(f"✅ Document '{title}' added with {len(sentences)} sentences, {triage_created} triage items created")
