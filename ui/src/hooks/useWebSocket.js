@@ -53,7 +53,7 @@ const useWebSocket = (userId, username = 'Anonymous', role = 'annotator') => {
   
   const ws = useRef(null);
   const reconnectAttempts = useRef(0);
-  const maxReconnectAttempts = 5;
+  const maxReconnectAttempts = 2;
   const reconnectTimeout = useRef(null);
   
   const connect = useCallback(() => {
@@ -102,9 +102,9 @@ const useWebSocket = (userId, username = 'Anonymous', role = 'annotator') => {
         setIsConnected(false);
         setConnectionStatus('disconnected');
         
-        // Attempt to reconnect
-        if (reconnectAttempts.current < maxReconnectAttempts) {
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
+        // Attempt to reconnect (less aggressive for production)
+        if (reconnectAttempts.current < maxReconnectAttempts && event.code !== 1006) {
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
           console.debug(`🔄 Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current + 1}/${maxReconnectAttempts})`);
           
           reconnectTimeout.current = setTimeout(() => {
@@ -113,7 +113,7 @@ const useWebSocket = (userId, username = 'Anonymous', role = 'annotator') => {
             connect();
           }, delay);
         } else {
-          console.error('❌ Max reconnection attempts reached');
+          console.warn('❌ WebSocket connection failed - continuing without real-time features');
           setConnectionStatus('failed');
         }
       };
@@ -121,6 +121,11 @@ const useWebSocket = (userId, username = 'Anonymous', role = 'annotator') => {
       ws.current.onerror = (error) => {
         console.error('❌ WebSocket error:', error);
         setConnectionStatus('error');
+        
+        // Don't attempt to reconnect immediately on error
+        if (reconnectAttempts.current === 0) {
+          console.warn('🚫 WebSocket connection failed immediately - may not be supported on this deployment');
+        }
       };
       
     } catch (error) {

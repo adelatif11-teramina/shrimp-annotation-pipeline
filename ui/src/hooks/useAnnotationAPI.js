@@ -81,19 +81,24 @@ export function useAnnotationAPI() {
 
   const getCurrentItem = useCallback(
     async (itemId) => {
-      return apiCall(`/api/triage/queue?limit=50`).then((response) => {
+      return apiCall(`/api/triage/queue?limit=200`).then((response) => {
         const items = response.items || response;
         // Convert itemId to number for comparison since API returns numeric IDs
         const numericId = parseInt(itemId, 10);
-        return (
-          items.find(
-            (item) =>
-              item.item_id === itemId ||
-              item.item_id === numericId ||
-              item.id === itemId ||
-              item.id === numericId,
-          ) || null
+        const item = items.find(
+          (item) =>
+            item.item_id === itemId ||
+            item.item_id === numericId ||
+            item.id === itemId ||
+            item.id === numericId,
         );
+        
+        if (!item) {
+          console.log(`🔍 Item ${itemId} not found. Available items:`, 
+            items.slice(0, 5).map(i => ({ id: i.item_id || i.id, text: i.text?.substring(0, 50) })));
+        }
+        
+        return item || null;
       });
     },
     [apiCall],
