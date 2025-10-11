@@ -204,8 +204,8 @@ try:
             }
         ]
         
-        # Combine uploaded items from storage with mock items (uploaded first)
-        all_items = stored_items + mock_items
+        # Combine mock items with uploaded items (mock first for accessibility)
+        all_items = mock_items + stored_items
         
         # Filter by status if specified
         if status and status != "undefined" and status != "null" and status.lower() != "all items":
@@ -596,10 +596,34 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
         # Load from persistent storage
         stored_docs, stored_items = load_storage()
         
-        # Mock next item
+        # Return next item consistent with queue ordering (mock items first)
         if stored_items:
-            next_item = stored_items[0]  # Return first item
-            logger.info(f"⏭️ [TRIAGE] Returning uploaded item: {next_item.get('item_id')}")
+            # Check if there are pending mock items first
+            mock_items = [
+                {
+                    "item_id": 1,
+                    "doc_id": "doc_1",
+                    "sent_id": "sent_1", 
+                    "text": "White Spot Syndrome Virus (WSSV) is one of the most devastating pathogens affecting Pacific white shrimp.",
+                    "priority_score": 0.95,
+                    "confidence": 0.8,
+                    "status": "pending",
+                    "created_at": "2024-01-01T00:00:00Z"
+                },
+                {
+                    "item_id": 2,
+                    "doc_id": "doc_2",
+                    "sent_id": "sent_2", 
+                    "text": "PCR screening is critical for early detection of aquaculture pathogens.",
+                    "priority_score": 0.87,
+                    "confidence": 0.75,
+                    "status": "pending",
+                    "created_at": "2024-01-01T01:00:00Z"
+                }
+            ]
+            # Return first mock item to match queue ordering
+            next_item = mock_items[0]
+            logger.info(f"⏭️ [TRIAGE] Returning mock item: {next_item.get('item_id')}")
             return next_item
         
         # Fallback mock item

@@ -199,6 +199,13 @@ function AnnotationWorkspace() {
       if (!item) {
         console.warn(`Item with ID ${id} not found, loading next available item`);
         const nextItem = await getNextItem();
+        
+        if (!nextItem) {
+          console.error('No items available for annotation');
+          navigate('/triage');
+          return;
+        }
+        
         setCurrentItem(nextItem);
         
         // Load existing entities from the queue item format
