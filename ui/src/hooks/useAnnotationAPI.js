@@ -96,6 +96,8 @@ export function useAnnotationAPI() {
         if (!item) {
           console.log(`🔍 Item ${itemId} not found. Available items:`, 
             items.slice(0, 5).map(i => ({ id: i.item_id || i.id, text: i.text?.substring(0, 50) })));
+          console.log(`🔍 [DEBUG] Total items received: ${items.length}`);
+          console.log(`🔍 [DEBUG] Full response:`, response);
         }
         
         return item || null;

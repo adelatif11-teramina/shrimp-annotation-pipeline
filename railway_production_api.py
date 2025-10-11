@@ -219,7 +219,16 @@ try:
         final_items = all_items[offset:offset+limit]
         logger.info(f"🎯 [SINGLE TRIAGE] Returning {len(final_items)} items out of {len(all_items)} total")
         
-        return {
+        # Debug: log item types and IDs for troubleshooting
+        if final_items:
+            item_ids = [item.get("item_id") for item in final_items[:10]]
+            logger.info(f"🔍 [DEBUG] First 10 item IDs: {item_ids}")
+            
+            mock_count = len([item for item in final_items if item.get("item_id", 0) <= 10])
+            uploaded_count = len([item for item in final_items if item.get("item_id", 0) > 10])
+            logger.info(f"🔍 [DEBUG] Mock items: {mock_count}, Uploaded items: {uploaded_count}")
+        
+        response = {
             "items": final_items,
             "total": len(all_items),
             "limit": limit,
@@ -227,6 +236,13 @@ try:
             "has_more": offset + limit < len(all_items),
             "source": "persistent_storage"
         }
+        
+        # Debug: log response size
+        import json
+        response_size = len(json.dumps(response))
+        logger.info(f"🔍 [DEBUG] Response size: {response_size} bytes")
+        
+        return response
 
     # DOCUMENTS ENDPOINT 
     @app.get("/api/documents")
@@ -307,11 +323,12 @@ try:
         }
         current_docs.insert(0, new_document)  # Add to front (newest first)
         
-        # Create triage items for sentences that need annotation
+        # Create triage items for sentences that need annotation  
+        item_counter = len(current_items) + 100  # Starting ID for this batch
         for i, sentence in enumerate(sentences):  # Process all sentences
             if len(sentence) > 20:  # Only meaningful sentences
                 triage_item = {
-                    "item_id": len(current_items) + 100,  # Unique ID
+                    "item_id": item_counter,  # Sequential unique ID
                     "doc_id": doc_id,
                     "sent_id": f"{doc_id}_sent_{i+1}",
                     "text": sentence + ".",
@@ -321,7 +338,8 @@ try:
                     "created_at": timestamp,
                     "metadata": {"source": "uploaded", "sentence_index": i}
                 }
-                current_items.insert(0, triage_item)  # Add to front
+                current_items.append(triage_item)  # Add to end in correct order
+                item_counter += 1  # Increment for next item
         
         # Save to persistent storage
         save_storage(current_docs, current_items)

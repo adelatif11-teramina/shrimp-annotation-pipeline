@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     frontend_url: str = Field("http://localhost:3000", env="FRONTEND_URL")
     
     # Database
+    database_url: Optional[str] = Field(None, env="DATABASE_URL")  # Railway sets this directly
     db_host: str = Field("localhost", env="DB_HOST")
     db_port: int = Field(5432, env="DB_PORT")
     db_name: str = Field("annotations", env="DB_NAME")
@@ -36,12 +37,11 @@ class Settings(BaseSettings):
     db_password: Optional[str] = Field(None, env="DB_PASSWORD")  # Optional for Railway
     
     @property
-    def database_url(self) -> str:
+    def resolved_database_url(self) -> str:
         """Get database URL from environment or construct PostgreSQL URL"""
         # Check if DATABASE_URL is set in environment (takes precedence)
-        env_url = os.getenv("DATABASE_URL")
-        if env_url:
-            return env_url
+        if self.database_url:
+            return self.database_url
         
         # Otherwise construct PostgreSQL URL
         return f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
