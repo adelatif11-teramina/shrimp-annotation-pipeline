@@ -218,8 +218,9 @@ function AnnotationWorkspace() {
           setTopics(nextItem.topics || []);
         }
         // Navigate to the correct URL if we loaded a different item
-        if (nextItem && nextItem.id) {
-          navigate(`/annotate/${nextItem.id}`, { replace: true });
+        if (nextItem && (nextItem.item_id || nextItem.id)) {
+          const itemId = nextItem.item_id || nextItem.id;
+          navigate(`/annotate/${itemId}`, { replace: true });
         }
         return;
       }
@@ -313,7 +314,7 @@ function AnnotationWorkspace() {
     try {
       const item = await getNextItem();
       if (item) {
-        navigate(`/annotate/${item.id}`);
+        navigate(`/annotate/${item.item_id || item.id}`);
       } else {
         navigate('/triage');
       }
