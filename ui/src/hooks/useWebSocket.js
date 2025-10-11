@@ -53,7 +53,7 @@ const useWebSocket = (userId, username = 'Anonymous', role = 'annotator') => {
   
   const ws = useRef(null);
   const reconnectAttempts = useRef(0);
-  const maxReconnectAttempts = 2;
+  const maxReconnectAttempts = 0; // Disable reconnection for Railway deployment
   const reconnectTimeout = useRef(null);
   
   const connect = useCallback(() => {
@@ -268,17 +268,20 @@ const useWebSocket = (userId, username = 'Anonymous', role = 'annotator') => {
     reconnectAttempts.current = 0;
   }, []);
   
-  // Connect on mount - temporarily disabled
+  // Connect on mount - disabled for Railway deployment (WebSocket not supported)
   useEffect(() => {
     if (!userId) {
       return undefined;
     }
 
-    connect();
+    // Disabled WebSocket connection for Railway deployment
+    console.debug('🚫 WebSocket connection disabled for Railway deployment');
+    setConnectionStatus('disabled');
+    
     return () => {
       disconnect();
     };
-  }, [userId, connect, disconnect]);
+  }, [userId, disconnect]);
   
   // Check if user is working on specific item
   const isUserOnItem = useCallback((itemId, checkUserId = null) => {

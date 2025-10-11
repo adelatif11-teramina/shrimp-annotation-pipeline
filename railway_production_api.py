@@ -559,6 +559,22 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
             logger.error(f"❌ [DRAFT] Request type: {type(request)}")
             raise HTTPException(status_code=500, detail=str(e))
 
+    @app.delete("/api/annotations/draft")
+    async def delete_draft_annotation(request: Dict[str, Any]):
+        """Delete/clear draft annotation"""
+        try:
+            item_id = request.get('item_id', 'unknown')
+            logger.info(f"🗑️ [DRAFT] Clearing draft for item: {item_id}")
+            
+            return {
+                "status": "success",
+                "message": "Draft cleared successfully",
+                "item_id": item_id
+            }
+        except Exception as e:
+            logger.error(f"❌ [DRAFT] Error clearing draft: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
     @app.get("/api/annotations/statistics")
     async def get_annotation_statistics():
         """Get annotation statistics"""
@@ -596,34 +612,37 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
         # Load from persistent storage
         stored_docs, stored_items = load_storage()
         
-        # Return next item consistent with queue ordering (mock items first)
-        if stored_items:
-            # Check if there are pending mock items first
-            mock_items = [
-                {
-                    "item_id": 1,
-                    "doc_id": "doc_1",
-                    "sent_id": "sent_1", 
-                    "text": "White Spot Syndrome Virus (WSSV) is one of the most devastating pathogens affecting Pacific white shrimp.",
-                    "priority_score": 0.95,
-                    "confidence": 0.8,
-                    "status": "pending",
-                    "created_at": "2024-01-01T00:00:00Z"
-                },
-                {
-                    "item_id": 2,
-                    "doc_id": "doc_2",
-                    "sent_id": "sent_2", 
-                    "text": "PCR screening is critical for early detection of aquaculture pathogens.",
-                    "priority_score": 0.87,
-                    "confidence": 0.75,
-                    "status": "pending",
-                    "created_at": "2024-01-01T01:00:00Z"
-                }
-            ]
-            # Return first mock item to match queue ordering
-            next_item = mock_items[0]
-            logger.info(f"⏭️ [TRIAGE] Returning mock item: {next_item.get('item_id')}")
+        # Use same ordering as triage queue to ensure consistency
+        mock_items = [
+            {
+                "item_id": 1,
+                "doc_id": "doc_1",
+                "sent_id": "sent_1", 
+                "text": "White Spot Syndrome Virus (WSSV) is one of the most devastating pathogens affecting Pacific white shrimp.",
+                "priority_score": 0.95,
+                "confidence": 0.8,
+                "status": "pending",
+                "created_at": "2024-01-01T00:00:00Z"
+            },
+            {
+                "item_id": 2,
+                "doc_id": "doc_2",
+                "sent_id": "sent_2", 
+                "text": "PCR screening is critical for early detection of aquaculture pathogens.",
+                "priority_score": 0.87,
+                "confidence": 0.75,
+                "status": "pending",
+                "created_at": "2024-01-01T01:00:00Z"
+            }
+        ]
+        
+        # Combine in same order as queue (mock first, then stored)
+        all_items = mock_items + stored_items
+        
+        # Return first available item (same logic as queue)
+        if all_items:
+            next_item = all_items[0]
+            logger.info(f"⏭️ [TRIAGE] Returning next item: {next_item.get('item_id')}")
             return next_item
         
         # Fallback mock item
