@@ -383,12 +383,20 @@ class LLMCandidateGenerator:
                         return json.loads(content)
                     except json.JSONDecodeError as e:
                         logger.warning(f"Failed to parse OpenAI JSON response: {content[:100]}...")
-                        # Try to extract JSON from response
+                        # Try to extract JSON from markdown code blocks
                         import re
-                        json_match = re.search(r'\{.*\}', content, re.DOTALL)
-                        if json_match:
-                            return json.loads(json_match.group(0))
-                        raise ValueError(f"Invalid JSON in OpenAI response: {e}")
+                        # Remove markdown code blocks (```json ... ```)
+                        cleaned_content = re.sub(r'```(?:json)?\s*', '', content)
+                        cleaned_content = re.sub(r'```\s*$', '', cleaned_content.strip())
+                        
+                        try:
+                            return json.loads(cleaned_content)
+                        except json.JSONDecodeError:
+                            # Fallback: extract JSON object from content
+                            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+                            if json_match:
+                                return json.loads(json_match.group(0))
+                            raise ValueError(f"Invalid JSON in OpenAI response: {e}")
                 
                 return await circuit_breaker.async_call(api_call)
                 

@@ -83,9 +83,9 @@ async def main():
             
             print(f"   📊 {len(document.sentences)} sentences total")
             
-            # Process sentences in batches (to manage API costs)
-            sentences_to_process = document.sentences[:20]  # First 20 sentences
-            print(f"   🎯 Processing first {len(sentences_to_process)} sentences...")
+            # Process all sentences
+            sentences_to_process = document.sentences
+            print(f"   🎯 Processing {len(sentences_to_process)} sentences...")
             
             doc_candidates = []
             

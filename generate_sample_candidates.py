@@ -53,10 +53,10 @@ def main():
             
             print(f"   Segmented into {len(document.sentences)} sentences")
             
-            # Generate candidates for first 10 sentences
+            # Generate candidates for all sentences
             doc_candidates = []
             
-            for i, sentence in enumerate(document.sentences[:10]):
+            for i, sentence in enumerate(document.sentences):
                 try:
                     # Extract entities using rules
                     entities = rule_engine.extract_entities(sentence.text)

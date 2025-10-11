@@ -977,8 +977,8 @@ async def populate_triage_queue() -> Dict[str, Any]:
         total_candidates = 0
         processed_docs = 0
         
-        # Process each document (limit for demo)
-        for doc_file in doc_files[:1]:  # Process first document for demo
+        # Process each document
+        for doc_file in doc_files:
             logger.info(f"Processing {doc_file.name}")
             
             # Ingest document to get sentences
@@ -988,8 +988,8 @@ async def populate_triage_queue() -> Dict[str, Any]:
                 title=doc_file.stem
             )
             
-            # Process first few sentences for demo
-            for sentence in document.sentences[:10]:  # First 10 sentences
+            # Process all sentences
+            for sentence in document.sentences:
                 try:
                     # Generate rule-based candidates
                     rule_result = rule_engine.process_sentence(

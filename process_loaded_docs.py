@@ -68,8 +68,8 @@ async def process_loaded_documents():
                 title=doc_file.stem
             )
             
-            # Process first 50 sentences (to manage API costs)
-            sentences_to_process = document.sentences[:50]
+            # Process all sentences
+            sentences_to_process = document.sentences
             print(f"   Processing {len(sentences_to_process)} sentences...")
             
             doc_candidates = []

@@ -75,7 +75,7 @@ def main():
     
     # Process each document
     loaded_count = 0
-    for doc_file in imported_files[:10]:  # Start with first 10 documents
+    for doc_file in imported_files:  # Process all documents
         try:
             print(f"Loading: {doc_file.name}")
             

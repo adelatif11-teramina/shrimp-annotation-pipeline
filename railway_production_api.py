@@ -308,7 +308,7 @@ try:
         current_docs.insert(0, new_document)  # Add to front (newest first)
         
         # Create triage items for sentences that need annotation
-        for i, sentence in enumerate(sentences[:3]):  # Limit to first 3 sentences for demo
+        for i, sentence in enumerate(sentences):  # Process all sentences
             if len(sentence) > 20:  # Only meaningful sentences
                 triage_item = {
                     "item_id": len(current_items) + 100,  # Unique ID

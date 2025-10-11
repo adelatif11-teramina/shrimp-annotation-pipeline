@@ -38,7 +38,7 @@ def main():
     
     # Process each document and send to API
     loaded_count = 0
-    for doc_file in imported_files[:5]:  # Start with first 5 documents
+    for doc_file in imported_files:  # Process all documents
         try:
             print(f"Loading: {doc_file.name}")
             
