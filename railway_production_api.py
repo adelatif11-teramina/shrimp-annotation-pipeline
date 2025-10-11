@@ -461,7 +461,17 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
         # Parse and validate the JSON response
         try:
             logger.info(f"🔍 [OPENAI] Parsing JSON response...")
-            result = json.loads(content)
+            
+            # Clean markdown code blocks if present (same as LLM candidate generator)
+            import re
+            cleaned_content = re.sub(r'```(?:json)?\s*', '', content)
+            cleaned_content = cleaned_content.strip('`')
+            
+            if cleaned_content != content:
+                logger.info(f"🧽 [OPENAI] Cleaned markdown wrapper from response")
+                logger.info(f"🧽 [OPENAI] Cleaned content preview: {cleaned_content[:100]}...")
+            
+            result = json.loads(cleaned_content)
             
             # Detailed analysis of the response structure
             logger.info(f"🔍 [OPENAI] Response keys: {list(result.keys())}")
@@ -501,8 +511,8 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
         
         # Disease/Pathogen patterns - comprehensive matching
         if any(word in sentence_lower for word in ['wssv', 'white spot', 'virus', 'affects', 'mortality', 'disease', 'pathogen', 'infection', 'syndrome', 'larvae']):
-            # Choose appropriate entities based on sentence content
-            if 'translucent' in sentence_lower or 'post-larvae' in sentence_lower or 'tpd' in sentence_lower:
+            # Only generate entities that actually exist in the sentence
+            if 'tpd' in sentence_lower:  # Only if TPD is explicitly mentioned
                 mock_triplets.append({
                     "triplet_id": "mock_1",
                     "head": {"text": "TPD", "type": "DISEASE", "node_id": "tpd"},
@@ -511,7 +521,7 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
                     "evidence": "TPD affects post-larvae development",
                     "confidence": 0.88
                 })
-            else:
+            elif any(word in sentence_lower for word in ['wssv', 'white spot', 'virus']):
                 mock_triplets.append({
                     "triplet_id": "mock_1", 
                     "head": {"text": "White Spot Syndrome Virus", "type": "PATHOGEN", "node_id": "wssv"},
@@ -520,6 +530,7 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
                     "evidence": "White spot syndrome virus affects Pacific white shrimp",
                     "confidence": 0.90
                 })
+            # If no specific pathogens are mentioned, don't generate hallucinated triplets
         
         # PCR/Detection patterns
         if any(word in sentence_lower for word in ['pcr', 'detect', 'screen']):
