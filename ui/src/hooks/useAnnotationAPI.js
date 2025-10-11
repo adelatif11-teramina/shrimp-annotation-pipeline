@@ -81,7 +81,7 @@ export function useAnnotationAPI() {
 
   const getCurrentItem = useCallback(
     async (itemId) => {
-      return apiCall(`/api/triage/queue?limit=200`).then((response) => {
+      return apiCall(`/api/triage/queue?limit=1000&sort_by=priority`).then((response) => {
         const items = response.items || response;
         // Convert itemId to number for comparison since API returns numeric IDs
         const numericId = parseInt(itemId, 10);
