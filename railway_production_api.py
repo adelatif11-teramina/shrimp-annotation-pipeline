@@ -151,6 +151,51 @@ try:
             logger.error(f"❌ Failed to save storage: {e}")
             logger.error(f"❌ Current working dir: {os.getcwd()}")
             logger.error(f"❌ /tmp permissions: {oct(os.stat('/tmp').st_mode)}")
+
+    def load_annotations_storage() -> List[Dict[str, Any]]:
+        """Load annotations from persistent storage"""
+        storage_file = Path("/tmp/railway_annotations.json")
+        
+        if not storage_file.exists():
+            logger.info(f"📂 Annotations storage file doesn't exist, returning empty list")
+            return []
+        
+        try:
+            logger.info(f"🔍 Loading annotations from: {storage_file} (exists: {storage_file.exists()})")
+            with open(storage_file, 'r') as f:
+                data = json.load(f)
+            
+            annotations = data.get('annotations', []) if isinstance(data, dict) else data
+            logger.info(f"✅ Loaded {len(annotations)} annotations from storage")
+            return annotations
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to load annotations storage: {e}")
+            return []
+
+    def save_annotations_storage(annotations: List[Dict[str, Any]]):
+        """Save annotations to persistent storage"""
+        storage_file = Path("/tmp/railway_annotations.json")
+        
+        try:
+            data = {
+                'annotations': annotations,
+                'timestamp': datetime.datetime.now().isoformat(),
+                'total_count': len(annotations)
+            }
+            
+            # Write to temporary file first, then rename (atomic operation)
+            temp_file = storage_file.with_suffix('.tmp')
+            with open(temp_file, 'w') as f:
+                json.dump(data, f, indent=2)
+            
+            # Atomic rename
+            temp_file.rename(storage_file)
+            
+            logger.info(f"✅ Successfully saved {len(annotations)} annotations to storage")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to save annotations storage: {e}")
     
     # REQUEST MODELS
     class DraftAnnotationRequest(BaseModel):
@@ -696,55 +741,147 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
         """Get annotations list"""
         logger.info(f"📝 [ANNOTATIONS] List requested: sort_by={sort_by}, limit={limit}")
         
-        # Mock annotations
-        mock_annotations = [
-            {
-                "annotation_id": 1,
-                "doc_id": "doc_1",
-                "sent_id": "sent_1",
-                "text": "WSSV causes severe mortality in shrimp farms.",
-                "entities": [
-                    {"text": "WSSV", "type": "PATHOGEN", "start": 0, "end": 4}
-                ],
-                "relations": [
-                    {"head": "WSSV", "relation": "CAUSES", "tail": "mortality"}
-                ],
-                "status": "completed",
-                "confidence": 0.9,
-                "annotator": "anonymous", 
-                "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-01T01:00:00Z"
-            },
-            {
-                "annotation_id": 2,
-                "doc_id": "doc_2", 
-                "sent_id": "sent_2",
-                "text": "PCR screening helps detect viral pathogens early.",
-                "entities": [
-                    {"text": "PCR screening", "type": "TEST_TYPE", "start": 0, "end": 13}
-                ],
-                "relations": [
-                    {"head": "PCR screening", "relation": "DETECTS", "tail": "viral pathogens"}
-                ],
-                "status": "pending",
-                "confidence": 0.85,
-                "annotator": "anonymous",
-                "created_at": "2024-01-01T02:00:00Z", 
-                "updated_at": "2024-01-01T03:00:00Z"
-            }
-        ]
+        # Load annotations from persistent storage
+        storage_annotations = load_annotations_storage()
+        
+        # Add some mock annotations if storage is empty (for demo purposes)
+        if not storage_annotations:
+            storage_annotations = [
+                {
+                    "annotation_id": 1,
+                    "doc_id": "doc_1",
+                    "sent_id": "sent_1",
+                    "text": "WSSV causes severe mortality in shrimp farms.",
+                    "entities": [
+                        {"text": "WSSV", "type": "PATHOGEN", "start": 0, "end": 4}
+                    ],
+                    "relations": [
+                        {"head": "WSSV", "relation": "CAUSES", "tail": "mortality"}
+                    ],
+                    "status": "completed",
+                    "confidence": 0.9,
+                    "annotator": "demo", 
+                    "created_at": "2024-01-01T00:00:00Z",
+                    "updated_at": "2024-01-01T01:00:00Z"
+                },
+                {
+                    "annotation_id": 2,
+                    "doc_id": "doc_2", 
+                    "sent_id": "sent_2",
+                    "text": "PCR screening helps detect viral pathogens early.",
+                    "entities": [
+                        {"text": "PCR screening", "type": "TEST_TYPE", "start": 0, "end": 13}
+                    ],
+                    "relations": [
+                        {"head": "PCR screening", "relation": "DETECTS", "tail": "viral pathogens"}
+                    ],
+                    "status": "pending",
+                    "confidence": 0.85,
+                    "annotator": "demo",
+                    "created_at": "2024-01-01T02:00:00Z", 
+                    "updated_at": "2024-01-01T03:00:00Z"
+                }
+            ]
+        
+        # Sort annotations
+        if sort_by == "created_at":
+            storage_annotations.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        elif sort_by == "updated_at":
+            storage_annotations.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+        elif sort_by == "confidence":
+            storage_annotations.sort(key=lambda x: x.get("confidence", 0), reverse=True)
         
         # Filter by status if specified
         if status:
-            mock_annotations = [ann for ann in mock_annotations if ann["status"] == status]
+            storage_annotations = [ann for ann in storage_annotations if ann.get("status") == status]
+        
+        logger.info(f"📝 [ANNOTATIONS] Returning {len(storage_annotations)} annotations (filtered by status: {status})")
         
         return {
-            "annotations": mock_annotations[offset:offset+limit],
-            "total": len(mock_annotations),
+            "annotations": storage_annotations[offset:offset+limit],
+            "total": len(storage_annotations),
             "limit": limit,
             "offset": offset,
-            "has_more": offset + limit < len(mock_annotations)
+            "has_more": offset + limit < len(storage_annotations),
+            "from_storage": True
         }
+
+    @app.get("/api/annotations/export")
+    async def export_annotations(
+        sort_by: str = "created_at",
+        format: str = "json",
+        status: Optional[str] = None
+    ):
+        """Export annotations in various formats"""
+        logger.info(f"📤 [EXPORT] Annotation export requested: format={format}, status={status}")
+        
+        # Load annotations from persistent storage
+        storage_annotations = load_annotations_storage()
+        
+        # Filter by status if specified
+        if status:
+            storage_annotations = [ann for ann in storage_annotations if ann.get("status") == status]
+        
+        # Sort annotations
+        if sort_by == "created_at":
+            storage_annotations.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        elif sort_by == "updated_at":
+            storage_annotations.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+        
+        logger.info(f"📤 [EXPORT] Exporting {len(storage_annotations)} annotations in {format} format")
+        
+        if format.lower() == "json":
+            return {
+                "export_metadata": {
+                    "format": "json",
+                    "total_annotations": len(storage_annotations),
+                    "export_timestamp": datetime.datetime.now().isoformat(),
+                    "filtered_by_status": status
+                },
+                "annotations": storage_annotations
+            }
+        elif format.lower() == "csv":
+            # Convert to CSV format
+            import io
+            import csv
+            
+            output = io.StringIO()
+            writer = csv.writer(output)
+            
+            # Write header
+            writer.writerow([
+                "annotation_id", "doc_id", "sent_id", "text", "status", 
+                "confidence", "annotator", "created_at", "entities_count", 
+                "relations_count", "triplets_count"
+            ])
+            
+            # Write data
+            for ann in storage_annotations:
+                writer.writerow([
+                    ann.get("annotation_id", ""),
+                    ann.get("doc_id", ""),
+                    ann.get("sent_id", ""),
+                    ann.get("text", "")[:100],  # Truncate long text
+                    ann.get("status", ""),
+                    ann.get("confidence", ""),
+                    ann.get("annotator", ""),
+                    ann.get("created_at", ""),
+                    len(ann.get("entities", [])),
+                    len(ann.get("relations", [])),
+                    len(ann.get("triplets", []))
+                ])
+            
+            csv_content = output.getvalue()
+            output.close()
+            
+            from fastapi.responses import Response
+            return Response(
+                content=csv_content,
+                media_type="text/csv",
+                headers={"Content-Disposition": f"attachment; filename=annotations_export_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"}
+            )
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported export format: {format}")
 
     @app.get("/api/triage/statistics")
     async def get_triage_statistics():
@@ -832,18 +969,48 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
             
             logger.info(f"📝 [DECISION] Annotations: {len(entities)} entities, {len(relations)} relations, {len(triplets)} triplets")
             
-            # Simulate processing
+            # Save annotation to persistent storage
             decision_id = f"decision_{item_id}_{decision}"
-            timestamp = "2024-01-01T00:00:00Z"
+            timestamp = datetime.datetime.now().isoformat()
+            
+            # Load existing annotations from persistent storage
+            storage_annotations = load_annotations_storage()
+            
+            # Create new annotation record
+            annotation_record = {
+                "annotation_id": len(storage_annotations) + 1,
+                "doc_id": request.get('doc_id', f'doc_{item_id}'),
+                "sent_id": request.get('sent_id', f'sent_{item_id}'),
+                "item_id": item_id,
+                "text": request.get('sentence', request.get('text', '')),
+                "entities": entities,
+                "relations": relations,
+                "triplets": triplets,
+                "topics": topics,
+                "notes": notes,
+                "decision": decision,
+                "status": "completed" if decision == "accept" else decision,
+                "confidence": confidence,
+                "annotator": user_id,
+                "created_at": timestamp,
+                "updated_at": timestamp
+            }
+            
+            # Add to storage and save
+            storage_annotations.append(annotation_record)
+            save_annotations_storage(storage_annotations)
+            
+            logger.info(f"💾 [DECISION] Saved annotation {annotation_record['annotation_id']} for item {item_id}")
             
             return {
                 "success": True,
                 "decision_id": decision_id,
+                "annotation_id": annotation_record["annotation_id"],
                 "item_id": item_id,
                 "decision": decision,
                 "status": "processed",
                 "timestamp": timestamp,
-                "message": f"Annotation {decision} processed successfully",
+                "message": f"Annotation {decision} processed and saved successfully",
                 "annotations_saved": {
                     "entities": len(entities),
                     "relations": len(relations), 
