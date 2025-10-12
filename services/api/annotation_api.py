@@ -726,7 +726,7 @@ async def get_triage_statistics() -> Dict[str, Any]:
 # Annotation decision endpoints
 @app.post("/annotations/decisions")
 async def submit_annotation_decision(decision: AnnotationDecision) -> Dict[str, str]:
-    """Submit an annotation decision"""
+    """Submit an annotation decision (structured format)"""
     if not triage_engine:
         raise HTTPException(status_code=503, detail="Triage engine not available")
     
@@ -751,6 +751,58 @@ async def submit_annotation_decision(decision: AnnotationDecision) -> Dict[str, 
                 json.dump(gold_data, f, indent=2)
         
         return {"status": "success", "message": "Decision recorded"}
+        
+    except Exception as e:
+        logger.error(f"Decision submission failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/annotations/decide")  # Frontend compatibility endpoint
+async def submit_annotation_decision_frontend(annotation_data: Dict[str, Any]) -> Dict[str, str]:
+    """Submit an annotation decision (frontend format)"""
+    if not triage_engine:
+        raise HTTPException(status_code=503, detail="Triage engine not available")
+    
+    try:
+        # Extract fields from frontend format
+        item_id = annotation_data.get("item_id") or annotation_data.get("candidate_id")
+        decision = annotation_data.get("decision", "accept")
+        
+        # Normalize decision values
+        if decision == "accept":
+            decision = "accepted"
+        elif decision == "reject":
+            decision = "rejected"
+        elif decision == "modify":
+            decision = "modified"
+        elif decision == "skip":
+            decision = "skipped"
+        
+        # Mark item as completed in triage
+        triage_engine.mark_completed(item_id, decision)
+        
+        # Store gold annotation if accepted/modified
+        if decision in ["accepted", "modified"]:
+            gold_path = pipeline_root / "data/gold" / f"{item_id}.json"
+            gold_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            gold_data = {
+                "item_id": item_id,
+                "decision": decision,
+                "entities": annotation_data.get("entities", []),
+                "relations": annotation_data.get("relations", []),
+                "topics": annotation_data.get("topics", []),
+                "triplets": annotation_data.get("triplets", []),
+                "confidence": annotation_data.get("confidence", 0.9),
+                "notes": annotation_data.get("notes", ""),
+                "annotator": f"user_{annotation_data.get('user_id', 'unknown')}",
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            with open(gold_path, 'w') as f:
+                json.dump(gold_data, f, indent=2)
+        
+        logger.info(f"Annotation decision recorded: {decision} for item {item_id}")
+        return {"status": "success", "message": "Decision recorded", "next_item": None}
         
     except Exception as e:
         logger.error(f"Decision submission failed: {e}")

@@ -108,6 +108,15 @@ class TriagePrioritizationEngine:
         self.seen_relations: Set[Tuple[str, str, str]] = set()
         self.entity_graph: Dict[str, Set[str]] = defaultdict(set)
         
+        # Completed items tracking for statistics
+        self.completed_items: List[TriageItem] = []
+        self.completion_stats = {
+            "accepted": 0,
+            "rejected": 0,
+            "modified": 0,
+            "skipped": 0
+        }
+        
         # Load existing gold annotations if available
         self.gold_store_path = Path(gold_store_path) if gold_store_path else None
         self._load_gold_annotations()
@@ -427,13 +436,9 @@ class TriagePrioritizationEngine:
         """
         batch = []
         
-        # Get items from priority queue
+        # Get items from priority queue (completed items are already removed)
         while len(batch) < batch_size and self.queue:
             item = heapq.heappop(self.queue)
-            
-            # Skip completed items
-            if item.status == "completed":
-                continue
             
             # Assign annotator
             if annotator:
@@ -451,23 +456,62 @@ class TriagePrioritizationEngine:
     
     def mark_completed(self, item_id: str, decision: str):
         """
-        Mark an item as completed.
+        Mark an item as completed and remove it from the queue.
         
         Args:
             item_id: Item ID
-            decision: Decision made (accepted, rejected, modified)
+            decision: Decision made (accepted, rejected, modified, skipped)
         """
-        # Find and update item
-        for i, item in enumerate(self.queue):
+        # Find and remove item from queue (rebuild queue without the completed item)
+        item_found = None
+        new_queue = []
+        
+        # Go through all items in queue
+        while self.queue:
+            item = heapq.heappop(self.queue)
             if item.item_id == item_id:
-                item.status = "completed"
-                
-                # Update tracking structures
-                if decision == "accepted" and item.item_type == "entity":
-                    text = item.candidate_data.get("text", "").lower()
-                    self.seen_entities.add(text)
-                
-                break
+                item_found = item
+                # Don't add this item back to queue - it's completed
+            else:
+                new_queue.append(item)
+        
+        # Rebuild the heap with remaining items
+        self.queue = []
+        for item in new_queue:
+            heapq.heappush(self.queue, item)
+        
+        if item_found:
+            # Update tracking structures before removal
+            if decision == "accepted" and item_found.item_type == "entity":
+                text = item_found.candidate_data.get("text", "").lower()
+                canonical = item_found.candidate_data.get("canonical", text).lower()
+                self.seen_entities.add(canonical)
+            
+            # Add relations to seen relations
+            if decision == "accepted" and item_found.item_type == "relation":
+                head_text = item_found.candidate_data.get("head_text", "").lower()
+                tail_text = item_found.candidate_data.get("tail_text", "").lower()
+                label = item_found.candidate_data.get("label", "")
+                if head_text and tail_text and label:
+                    rel_tuple = (head_text, label, tail_text)
+                    self.seen_relations.add(rel_tuple)
+                    
+                    # Update entity graph
+                    self.entity_graph[head_text].add(tail_text)
+                    self.entity_graph[tail_text].add(head_text)
+            
+            # Track completion
+            item_found.status = "completed"
+            item_found.timestamp = datetime.now().isoformat()
+            self.completed_items.append(item_found)
+            
+            # Update completion statistics
+            if decision in self.completion_stats:
+                self.completion_stats[decision] += 1
+            
+            logger.info(f"Removed completed item {item_id} from triage queue (decision: {decision})")
+        else:
+            logger.warning(f"Item {item_id} not found in triage queue for completion")
     
     def get_queue_statistics(self) -> Dict[str, Any]:
         """Get statistics about the triage queue"""
@@ -481,12 +525,14 @@ class TriagePrioritizationEngine:
         
         stats = {
             "total_items": len(self.queue),
+            "completed_items": len(self.completed_items),
             "by_priority": defaultdict(int),
             "by_type": defaultdict(int),
             "by_status": defaultdict(int),
-            "avg_priority_score": np.mean([item.priority_score for item in self.queue]),
+            "avg_priority_score": np.mean([item.priority_score for item in self.queue]) if self.queue else 0,
             "pending_critical": 0,
-            "pending_high": 0
+            "pending_high": 0,
+            "completion_stats": dict(self.completion_stats)
         }
         
         for item in self.queue:
