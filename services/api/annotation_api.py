@@ -282,15 +282,49 @@ async def startup_event():
     ingestion_service = DocumentIngestionService()
     logger.info("✓ Document ingestion service initialized")
     
+    # Initialize rule engine
+    rule_engine = ShimpAquacultureRuleEngine()
+    logger.info("✓ Rule-based annotation engine initialized")
+    
     # Initialize triage engine
     triage_engine = TriagePrioritizationEngine(
         gold_store_path=pipeline_root / "data/gold"
     )
     logger.info("✓ Triage prioritization engine initialized")
     
-    # Initialize rule engine
-    rule_engine = ShimpAquacultureRuleEngine()
-    logger.info("✓ Rule-based annotation engine initialized")
+    # Auto-populate queue on startup if empty
+    try:
+        if len(triage_engine.queue) == 0:
+            logger.info("🔄 Queue is empty on startup, populating from documents...")
+            raw_dir = pipeline_root / "data/raw"
+            if raw_dir.exists() and list(raw_dir.glob("*.txt")):
+                # Use a simple approach: populate directly without API call
+                doc_files = list(raw_dir.glob("*.txt"))
+                total_candidates = 0
+                
+                for doc_file in doc_files[:3]:  # Limit to first 3 files for startup
+                    logger.info(f"🔄 Startup processing: {doc_file.name}")
+                    try:
+                        document = ingestion_service.ingest_text_file(doc_file, source="startup", title=doc_file.stem)
+                        
+                        for sentence in document.sentences[:5]:  # Limit to first 5 sentences per doc
+                            rule_result = rule_engine.process_sentence(document.doc_id, sentence.sent_id, sentence.text)
+                            
+                            candidates = {"text": sentence.text, "entities": rule_result.get("entities", [])}
+                            doc_metadata = {"doc_id": document.doc_id, "sent_id": sentence.sent_id, "title": document.title, "source": "startup"}
+                            
+                            triage_engine.add_candidates(candidates, doc_metadata, rule_result)
+                            total_candidates += 1
+                            
+                    except Exception as e:
+                        logger.warning(f"Failed to process {doc_file.name} on startup: {e}")
+                        continue
+                
+                logger.info(f"✅ Startup queue population complete: {total_candidates} candidates")
+            else:
+                logger.info("📭 No documents found for startup queue population")
+    except Exception as e:
+        logger.warning(f"Startup queue population failed: {e}")
 
     if llm_generator and TripletWorkflow:
         triplet_workflow = TripletWorkflow(llm_generator, rule_engine)
@@ -723,6 +757,105 @@ async def get_triage_statistics() -> Dict[str, Any]:
     
     return triage_engine.get_queue_statistics()
 
+# Helper function for queue repopulation
+async def repopulate_queue_from_documents():
+    """Repopulate triage queue from available documents"""
+    if not ingestion_service or not rule_engine or not triage_engine:
+        raise Exception("Required services not available")
+    
+    logger.info("🔄 Starting queue repopulation from documents...")
+    
+    # Find all raw documents
+    raw_dir = pipeline_root / "data/raw"
+    if not raw_dir.exists():
+        logger.warning("No data/raw directory found")
+        return
+    
+    doc_files = list(raw_dir.glob("*.txt"))
+    if not doc_files:
+        logger.warning("No documents found to repopulate queue")
+        return
+    
+    total_candidates = 0
+    processed_docs = 0
+    
+    # Process each document
+    for doc_file in doc_files:
+        logger.info(f"🔄 Processing {doc_file.name} for queue repopulation")
+        
+        try:
+            # Ingest document to get sentences
+            document = ingestion_service.ingest_text_file(
+                doc_file,
+                source="uploaded", 
+                title=doc_file.stem
+            )
+            
+            # Process all sentences
+            for sentence in document.sentences:
+                try:
+                    # Generate rule-based candidates
+                    rule_result = rule_engine.process_sentence(
+                        document.doc_id,
+                        sentence.sent_id,
+                        sentence.text
+                    )
+                    
+                    # Create candidate data
+                    candidates = {
+                        "text": sentence.text,
+                        "entities": rule_result.get("entities", [])
+                    }
+                    
+                    doc_metadata = {
+                        "doc_id": document.doc_id,
+                        "sent_id": sentence.sent_id,
+                        "title": document.title,
+                        "source": "uploaded"
+                    }
+                    
+                    # Add to triage queue
+                    triage_engine.add_candidates(
+                        candidates,
+                        doc_metadata,
+                        {
+                            "entities": rule_result.get("entities", []),
+                            "relations": rule_result.get("relations", []),
+                            "topics": rule_result.get("topics", [])
+                        }
+                    )
+                    total_candidates += 1
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to process sentence in {doc_file.name}: {e}")
+                    continue
+            
+        except Exception as e:
+            logger.error(f"Failed to process document {doc_file.name}: {e}")
+            continue
+    
+    logger.info(f"🔄 Queue repopulation complete: {total_candidates} candidates from {processed_docs} documents")
+
+# Simpler approach - let's just avoid duplicates by checking existing queue items
+async def repopulate_queue_simple():
+    """Simple queue repopulation that avoids duplicates"""
+    try:
+        # Call the existing populate endpoint logic
+        result = await populate_triage_queue()
+        logger.info("🔄 Queue repopulated using existing populate endpoint")
+        return result
+    except Exception as e:
+        logger.warning(f"Failed to repopulate queue: {e}")
+        return None
+            
+            processed_docs += 1
+            
+        except Exception as e:
+            logger.error(f"Failed to process document {doc_file.name}: {e}")
+            continue
+    
+    logger.info(f"🔄 Queue repopulation complete: {total_candidates} candidates from {processed_docs} documents")
+
 # Annotation decision endpoints
 @app.post("/annotations/decisions")
 async def submit_annotation_decision(decision: AnnotationDecision) -> Dict[str, str]:
@@ -813,6 +946,16 @@ async def submit_annotation_decision_frontend(annotation_data: Dict[str, Any]) -
             
             batch = triage_engine.get_next_batch(1)
             logger.info(f"🔍 get_next_batch(1) returned: {len(batch) if batch else 0} items")
+            
+            # If queue is empty, try to repopulate from documents
+            if not batch and len(triage_engine.queue) == 0:
+                logger.info("🔄 Queue is empty, attempting to repopulate from documents...")
+                try:
+                    await repopulate_queue_simple()
+                    batch = triage_engine.get_next_batch(1)
+                    logger.info(f"🔍 After repopulation, get_next_batch(1) returned: {len(batch) if batch else 0} items")
+                except Exception as e:
+                    logger.warning(f"Failed to repopulate queue: {e}")
             
             if batch:
                 next_item_data = batch[0]
