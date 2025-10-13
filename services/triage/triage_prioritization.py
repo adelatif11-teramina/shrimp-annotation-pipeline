@@ -434,11 +434,17 @@ class TriagePrioritizationEngine:
         Returns:
             List of highest priority items
         """
+        logger.debug(f"🔍 get_next_batch called: batch_size={batch_size}, annotator={annotator}, queue_size={len(self.queue)}")
+        
         batch = []
+        items_popped = []
         
         # Get items from priority queue (completed items are already removed)
         while len(batch) < batch_size and self.queue:
             item = heapq.heappop(self.queue)
+            items_popped.append(item)
+            
+            logger.debug(f"   Popped item: {item.item_id} (status: {item.status}, assigned_to: {item.assigned_to})")
             
             # Assign annotator
             if annotator:
@@ -451,6 +457,8 @@ class TriagePrioritizationEngine:
         for item in batch:
             if not annotator:
                 heapq.heappush(self.queue, item)
+        
+        logger.debug(f"🔍 get_next_batch result: returning {len(batch)} items, pushed back {len([i for i in batch if not annotator])} items")
         
         return batch
     
@@ -465,12 +473,16 @@ class TriagePrioritizationEngine:
         # Find and remove item from queue (rebuild queue without the completed item)
         item_found = None
         new_queue = []
+        original_queue_size = len(self.queue)
+        
+        logger.info(f"🔍 mark_completed: Starting with queue size {original_queue_size}")
         
         # Go through all items in queue
         while self.queue:
             item = heapq.heappop(self.queue)
             if item.item_id == item_id:
                 item_found = item
+                logger.info(f"🎯 Found target item {item_id} to remove")
                 # Don't add this item back to queue - it's completed
             else:
                 new_queue.append(item)
@@ -479,6 +491,8 @@ class TriagePrioritizationEngine:
         self.queue = []
         for item in new_queue:
             heapq.heappush(self.queue, item)
+        
+        logger.info(f"🔍 mark_completed: Queue rebuilt with {len(self.queue)} items (removed {original_queue_size - len(self.queue)} items)")
         
         if item_found:
             # Update tracking structures before removal

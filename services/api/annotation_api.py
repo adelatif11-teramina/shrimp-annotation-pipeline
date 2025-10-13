@@ -804,7 +804,16 @@ async def submit_annotation_decision_frontend(annotation_data: Dict[str, Any]) -
         # Get next item from queue
         next_item = None
         try:
+            # Debug queue state before getting next batch
+            queue_stats = triage_engine.get_queue_statistics()
+            logger.info(f"🔍 Queue state after marking {item_id} as completed:")
+            logger.info(f"   Total items in queue: {queue_stats.get('total_items', 0)}")
+            logger.info(f"   Completed items: {queue_stats.get('completed_items', 0)}")
+            logger.info(f"   Queue length: {len(triage_engine.queue)}")
+            
             batch = triage_engine.get_next_batch(1)
+            logger.info(f"🔍 get_next_batch(1) returned: {len(batch) if batch else 0} items")
+            
             if batch:
                 next_item_data = batch[0]
                 # Convert TriageItem to dict format expected by frontend
@@ -817,9 +826,15 @@ async def submit_annotation_decision_frontend(annotation_data: Dict[str, Any]) -
                     "priority_score": next_item_data.priority_score,
                     "candidate_data": next_item_data.candidate_data
                 }
-                logger.info(f"Next item for annotation: {next_item['item_id']}")
+                logger.info(f"✅ Next item for annotation: {next_item['item_id']}")
+            else:
+                logger.warning(f"❌ No items returned from get_next_batch despite queue having {len(triage_engine.queue)} items")
+                # Debug: log first few items in queue
+                if triage_engine.queue:
+                    for i, item in enumerate(triage_engine.queue[:3]):
+                        logger.info(f"   Queue item {i}: {item.item_id} (status: {item.status})")
         except Exception as e:
-            logger.warning(f"Failed to get next item: {e}")
+            logger.error(f"❌ Failed to get next item: {e}", exc_info=True)
         
         logger.info(f"Annotation decision recorded: {decision} for item {item_id}")
         return {
