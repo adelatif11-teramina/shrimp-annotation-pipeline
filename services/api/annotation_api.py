@@ -847,14 +847,6 @@ async def repopulate_queue_simple():
     except Exception as e:
         logger.warning(f"Failed to repopulate queue: {e}")
         return None
-            
-            processed_docs += 1
-            
-        except Exception as e:
-            logger.error(f"Failed to process document {doc_file.name}: {e}")
-            continue
-    
-    logger.info(f"🔄 Queue repopulation complete: {total_candidates} candidates from {processed_docs} documents")
 
 # Annotation decision endpoints
 @app.post("/annotations/decisions")
