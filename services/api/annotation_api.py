@@ -697,7 +697,13 @@ async def get_triage_queue(
         raise HTTPException(status_code=503, detail="Triage engine not available")
     
     try:
-        batch = triage_engine.get_next_batch(limit, annotator)
+        # Use peek_queue for display purposes to avoid disrupting the queue
+        if annotator:
+            # If annotator specified, use get_next_batch for actual assignment
+            batch = triage_engine.get_next_batch(limit, annotator)
+        else:
+            # For display purposes, use peek_queue to avoid queue disruption
+            batch = triage_engine.peek_queue(limit)
         
         # Enrich items with sentence text and document titles
         enriched_items = []
@@ -891,6 +897,16 @@ async def submit_annotation_decision_frontend(annotation_data: Dict[str, Any]) -
         # Extract fields from frontend format
         item_id = annotation_data.get("item_id") or annotation_data.get("candidate_id")
         decision = annotation_data.get("decision", "accept")
+        
+        # DEBUG: Log what we're trying to remove vs what's in queue
+        logger.info(f"🔍 ANNOTATION SUBMISSION DEBUG:")
+        logger.info(f"   Submitted item_id: {item_id}")
+        logger.info(f"   Decision: {decision}")
+        logger.info(f"   Queue has {len(triage_engine.queue)} items:")
+        for i, queue_item in enumerate(triage_engine.queue[:5]):  # Show first 5
+            logger.info(f"     Queue item {i}: {queue_item.item_id}")
+        if len(triage_engine.queue) > 5:
+            logger.info(f"     ... and {len(triage_engine.queue) - 5} more items")
         
         # Normalize decision values
         if decision == "accept":

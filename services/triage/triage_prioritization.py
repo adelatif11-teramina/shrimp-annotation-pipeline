@@ -462,6 +462,29 @@ class TriagePrioritizationEngine:
         
         return batch
     
+    def peek_queue(self, limit: int = 10) -> List[TriageItem]:
+        """
+        Peek at queue items without removing them.
+        
+        Args:
+            limit: Number of items to return
+            
+        Returns:
+            List of highest priority items (without modifying queue)
+        """
+        # Create a temporary copy of the queue to peek at top items
+        temp_queue = self.queue.copy()
+        peeked_items = []
+        
+        # Extract top items without modifying original queue
+        for _ in range(min(limit, len(temp_queue))):
+            if temp_queue:
+                item = heapq.heappop(temp_queue)
+                peeked_items.append(item)
+        
+        logger.debug(f"🔍 peek_queue: showing {len(peeked_items)} of {len(self.queue)} items without modifying queue")
+        return peeked_items
+    
     def mark_completed(self, item_id: str, decision: str):
         """
         Mark an item as completed and remove it from the queue.
@@ -495,6 +518,7 @@ class TriagePrioritizationEngine:
         logger.info(f"🔍 mark_completed: Queue rebuilt with {len(self.queue)} items (removed {original_queue_size - len(self.queue)} items)")
         
         if item_found:
+            logger.info(f"✅ Found and removing item {item_id} from queue")
             # Update tracking structures before removal
             if decision == "accepted" and item_found.item_type == "entity":
                 text = item_found.candidate_data.get("text", "").lower()
