@@ -801,8 +801,32 @@ async def submit_annotation_decision_frontend(annotation_data: Dict[str, Any]) -
             with open(gold_path, 'w') as f:
                 json.dump(gold_data, f, indent=2)
         
+        # Get next item from queue
+        next_item = None
+        try:
+            batch = triage_engine.get_next_batch(1)
+            if batch:
+                next_item_data = batch[0]
+                # Convert TriageItem to dict format expected by frontend
+                next_item = {
+                    "item_id": next_item_data.item_id,
+                    "id": next_item_data.item_id,
+                    "doc_id": next_item_data.doc_id,
+                    "sent_id": next_item_data.sent_id,
+                    "item_type": next_item_data.item_type,
+                    "priority_score": next_item_data.priority_score,
+                    "candidate_data": next_item_data.candidate_data
+                }
+                logger.info(f"Next item for annotation: {next_item['item_id']}")
+        except Exception as e:
+            logger.warning(f"Failed to get next item: {e}")
+        
         logger.info(f"Annotation decision recorded: {decision} for item {item_id}")
-        return {"status": "success", "message": "Decision recorded", "next_item": None}
+        return {
+            "status": "success", 
+            "message": "Decision recorded", 
+            "next_item": next_item
+        }
         
     except Exception as e:
         logger.error(f"Decision submission failed: {e}")

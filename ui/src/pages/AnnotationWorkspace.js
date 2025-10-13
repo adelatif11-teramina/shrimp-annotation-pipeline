@@ -418,39 +418,29 @@ function AnnotationWorkspace() {
     };
 
     try {
-      const response = await callWithRecovery(
-        '/api/annotations/decide',
-        {
-          method: 'POST',
-          data: annotation,
-        },
-        {
-          type: 'submit_annotation',
-          itemId: currentItem.id,
-          critical: true,
-        },
-      );
+      // Use direct API call instead of callWithRecovery to avoid queuing issues
+      const response = await submitAnnotation(annotation);
 
       updateSessionStats('completed');
       clearDraft();
       stopAutoSave();
 
+      console.log('✅ Annotation submission response:', response);
+
       if (response.next_item) {
+        console.log('➡️ Navigating to next item:', response.next_item.item_id || response.next_item.id);
         navigate(`/annotate/${response.next_item.item_id || response.next_item.id}`);
       } else {
+        console.log('➡️ No more items, navigating to triage');
         navigate('/triage');
       }
       showFeedback('Annotation accepted', 'success');
     } catch (error) {
-      console.error('Failed to submit annotation:', error);
-      if (error.queued) {
-        showFeedback('Network issue: annotation queued for retry', 'warning');
-      } else {
-        showFeedback('Failed to submit annotation. Please try again.', 'error');
-      }
+      console.error('❌ Failed to submit annotation:', error);
+      showFeedback('Failed to submit annotation. Please try again.', 'error');
     }
   }, [
-    callWithRecovery,
+    submitAnnotation,
     clearDraft,
     confidence,
     currentItem,
