@@ -476,10 +476,11 @@ class TriagePrioritizationEngine:
         temp_queue = self.queue.copy()
         peeked_items = []
         
-        # Extract top items without modifying original queue
-        for _ in range(min(limit, len(temp_queue))):
-            if temp_queue:
-                item = heapq.heappop(temp_queue)
+        # Extract top items without modifying original queue, filter out completed
+        while len(peeked_items) < limit and temp_queue:
+            item = heapq.heappop(temp_queue)
+            # Only include pending/unassigned items (filter out completed)
+            if item.status != "completed":
                 peeked_items.append(item)
         
         logger.debug(f"🔍 peek_queue: showing {len(peeked_items)} of {len(self.queue)} items without modifying queue")
