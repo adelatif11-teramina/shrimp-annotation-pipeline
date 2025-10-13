@@ -1002,6 +1002,31 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
             
             logger.info(f"💾 [DECISION] Saved annotation {annotation_record['annotation_id']} for item {item_id}")
             
+            # CRITICAL FIX: Remove completed item from triage queue
+            logger.info(f"🗑️ [QUEUE REMOVAL] Removing item {item_id} from triage queue...")
+            try:
+                # Load current queue from storage
+                stored_docs, stored_items = load_storage()
+                logger.info(f"🗑️ [QUEUE REMOVAL] Loaded queue with {len(stored_items)} items")
+                
+                # Convert item_id to int for comparison (storage uses numeric IDs)
+                target_item_id = int(item_id) if str(item_id).isdigit() else item_id
+                
+                # Find and remove the item
+                items_before = len(stored_items)
+                stored_items = [item for item in stored_items if item.get("item_id") != target_item_id]
+                items_after = len(stored_items)
+                
+                if items_before > items_after:
+                    # Save updated queue back to storage
+                    save_storage(stored_docs, stored_items)
+                    logger.info(f"✅ [QUEUE REMOVAL] Successfully removed item {item_id} from queue ({items_before} → {items_after} items)")
+                else:
+                    logger.warning(f"⚠️ [QUEUE REMOVAL] Item {item_id} not found in queue (already removed or invalid ID)")
+                    
+            except Exception as e:
+                logger.error(f"❌ [QUEUE REMOVAL] Failed to remove item {item_id} from queue: {e}")
+            
             return {
                 "success": True,
                 "decision_id": decision_id,
