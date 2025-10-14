@@ -8,7 +8,7 @@ confidence, novelty, impact, and disagreement between models.
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple, Set
+from typing import Dict, List, Optional, Any, Tuple, Set, Union
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 from enum import Enum
@@ -486,25 +486,45 @@ class TriagePrioritizationEngine:
         logger.debug(f"🔍 peek_queue: showing {len(peeked_items)} of {len(self.queue)} items without modifying queue")
         return peeked_items
     
-    def mark_completed(self, item_id: str, decision: str):
+    def mark_completed(self, item_id: Union[str, int], decision: str) -> bool:
         """
         Mark an item as completed and remove it from the queue.
-        
+
         Args:
             item_id: Item ID
             decision: Decision made (accepted, rejected, modified, skipped)
         """
+        if item_id is None or (isinstance(item_id, str) and not item_id.strip()):
+            logger.warning("mark_completed called without a valid item_id")
+            return False
+
+        # Normalise the identifiers so numeric vs string forms match consistently
+        primary_id = str(item_id).strip()
+        candidate_ids = {primary_id, primary_id.lower()}
+
         # Find and remove item from queue (rebuild queue without the completed item)
         item_found = None
         new_queue = []
         original_queue_size = len(self.queue)
-        
+
         logger.info(f"🔍 mark_completed: Starting with queue size {original_queue_size}")
-        
+
         # Go through all items in queue
         while self.queue:
             item = heapq.heappop(self.queue)
-            if item.item_id == item_id:
+            queue_item_id = str(item.item_id).strip()
+            queue_id_matches = {queue_item_id, queue_item_id.lower()}
+
+            candidate_data_ids = set()
+            if isinstance(item.candidate_data, dict):
+                for key in ("candidate_id", "id", "item_id"):
+                    value = item.candidate_data.get(key)
+                    if value is not None:
+                        normalised = str(value).strip()
+                        if normalised:
+                            candidate_data_ids.update({normalised, normalised.lower()})
+
+            if candidate_ids & queue_id_matches or candidate_ids & candidate_data_ids:
                 item_found = item
                 logger.info(f"🎯 Found target item {item_id} to remove")
                 # Don't add this item back to queue - it's completed
@@ -549,8 +569,14 @@ class TriagePrioritizationEngine:
                 self.completion_stats[decision] += 1
             
             logger.info(f"Removed completed item {item_id} from triage queue (decision: {decision})")
-        else:
-            logger.warning(f"Item {item_id} not found in triage queue for completion")
+            return True
+
+        logger.warning(
+            "Item %s not found in triage queue for completion (checked IDs: %s)",
+            item_id,
+            sorted(candidate_ids)
+        )
+        return False
     
     def get_queue_statistics(self) -> Dict[str, Any]:
         """Get statistics about the triage queue"""

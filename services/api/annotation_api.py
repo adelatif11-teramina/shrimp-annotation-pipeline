@@ -863,7 +863,13 @@ async def submit_annotation_decision(decision: AnnotationDecision) -> Dict[str, 
     
     try:
         # Mark item as completed in triage
-        triage_engine.mark_completed(decision.item_id, decision.decision)
+        removed = triage_engine.mark_completed(decision.item_id, decision.decision)
+        if not removed:
+            logger.warning(
+                "Triage item %s could not be removed for decision %s",
+                decision.item_id,
+                decision.decision,
+            )
         
         # Store gold annotation if accepted/modified
         if decision.decision in ["accepted", "modified"] and decision.final_annotation:
@@ -919,7 +925,36 @@ async def submit_annotation_decision_frontend(annotation_data: Dict[str, Any]) -
             decision = "skipped"
         
         # Mark item as completed in triage
-        triage_engine.mark_completed(item_id, decision)
+        removal_ids = [item_id]
+        candidate_identifier = annotation_data.get("candidate_id")
+        if candidate_identifier is not None and candidate_identifier not in removal_ids:
+            removal_ids.append(candidate_identifier)
+        # Legacy payloads sometimes send camelCase identifiers
+        legacy_identifier = annotation_data.get("itemId")
+        if legacy_identifier is not None and legacy_identifier not in removal_ids:
+            removal_ids.append(legacy_identifier)
+
+        removed = False
+        for candidate in removal_ids:
+            if candidate is None:
+                continue
+            if triage_engine.mark_completed(candidate, decision):
+                removed = True
+                if candidate != item_id:
+                    logger.info(
+                        "✅ Queue removal recovered using fallback ID %s (submitted %s)",
+                        candidate,
+                        item_id,
+                    )
+                break
+
+        if not removed:
+            logger.warning(
+                "Item %s not found in triage queue for decision %s (fallbacks tried: %s)",
+                item_id,
+                decision,
+                [str(x) for x in removal_ids],
+            )
         
         # Store gold annotation if accepted/modified
         if decision in ["accepted", "modified"]:

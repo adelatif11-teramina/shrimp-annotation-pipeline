@@ -94,7 +94,7 @@ try:
     from fastapi.responses import JSONResponse, FileResponse
     from fastapi.staticfiles import StaticFiles
     from pydantic import BaseModel
-    from typing import Optional, Dict, Any, List
+    from typing import Optional, Dict, Any, List, Set
     import datetime
     import json
     
@@ -151,6 +151,60 @@ try:
             logger.error(f"❌ Failed to save storage: {e}")
             logger.error(f"❌ Current working dir: {os.getcwd()}")
             logger.error(f"❌ /tmp permissions: {oct(os.stat('/tmp').st_mode)}")
+
+    removed_default_items_file = Path("/tmp/railway_removed_defaults.json")
+
+    def canonical_identifier(value: Any) -> Optional[str]:
+        """Normalise identifiers so numeric vs string forms compare consistently."""
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        if text.isdigit():
+            return str(int(text))
+        return text.lower()
+
+    def identifier_forms(value: Any) -> Set[str]:
+        """Return a set of comparable forms for identifier matching."""
+        forms: Set[str] = set()
+        if value is None:
+            return forms
+        text = str(value).strip()
+        if not text:
+            return forms
+        forms.add(text)
+        forms.add(text.lower())
+        canonical = canonical_identifier(text)
+        if canonical:
+            forms.add(canonical)
+        return {form for form in forms if form}
+
+    def load_removed_default_items() -> Set[str]:
+        """Load default triage items the annotators have already completed."""
+        try:
+            if removed_default_items_file.exists():
+                with open(removed_default_items_file, 'r') as f:
+                    data = json.load(f)
+                normalised = {identifier for identifier in (canonical_identifier(x) for x in data) if identifier}
+                logger.info(f"🔍 Loaded {len(normalised)} removed default triage item IDs")
+                return normalised
+        except Exception as e:
+            logger.error(f"❌ Failed to load removed default items: {e}")
+        return set()
+
+    def save_removed_default_items(ids: Set[str]) -> None:
+        """Persist removed default triage item identifiers."""
+        try:
+            payload = sorted({identifier for identifier in (canonical_identifier(x) for x in ids) if identifier})
+            removed_default_items_file.parent.mkdir(parents=True, exist_ok=True)
+            temp_file = removed_default_items_file.with_suffix('.tmp')
+            with open(temp_file, 'w') as f:
+                json.dump(payload, f, indent=2)
+            temp_file.rename(removed_default_items_file)
+            logger.info(f"✅ Persisted {len(payload)} removed default triage item IDs")
+        except Exception as e:
+            logger.error(f"❌ Failed to save removed default items: {e}")
 
     def load_annotations_storage() -> List[Dict[str, Any]]:
         """Load annotations from persistent storage"""
@@ -249,6 +303,15 @@ try:
             }
         ]
         
+        removed_default_ids = load_removed_default_items()
+        if removed_default_ids:
+            mock_items = [
+                item for item in mock_items
+                if canonical_identifier(item.get("item_id")) not in removed_default_ids
+            ]
+            if mock_items:
+                logger.info(f"🔍 [SINGLE TRIAGE] {len(removed_default_ids)} default items hidden from queue")
+
         # Combine mock items with uploaded items (mock first for accessibility)
         all_items = mock_items + stored_items
         
@@ -1009,20 +1072,65 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
                 stored_docs, stored_items = load_storage()
                 logger.info(f"🗑️ [QUEUE REMOVAL] Loaded queue with {len(stored_items)} items")
                 
-                # Convert item_id to int for comparison (storage uses numeric IDs)
-                target_item_id = int(item_id) if str(item_id).isdigit() else item_id
-                
-                # Find and remove the item
+                # Build a robust identifier set for matching
+                target_forms: Set[str] = set()
+                candidate_identifiers = [
+                    item_id,
+                    request.get('candidate_id'),
+                    request.get('itemId'),
+                    request.get('id'),
+                ]
+                if request.get('doc_id') and request.get('sent_id'):
+                    candidate_identifiers.append(f"{request['doc_id']}_{request['sent_id']}")
+
+                for identifier in candidate_identifiers:
+                    target_forms.update(identifier_forms(identifier))
+
                 items_before = len(stored_items)
-                stored_items = [item for item in stored_items if item.get("item_id") != target_item_id]
+                filtered_items = []
+                removed_from_storage = False
+
+                for queued_item in stored_items:
+                    queue_forms: Set[str] = set()
+                    queue_forms.update(identifier_forms(queued_item.get("item_id")))
+                    queue_forms.update(identifier_forms(queued_item.get("id")))
+                    queue_forms.update(identifier_forms(queued_item.get("sent_id")))
+                    if queued_item.get("doc_id") and queued_item.get("sent_id"):
+                        queue_forms.update(
+                            identifier_forms(f"{queued_item['doc_id']}_{queued_item['sent_id']}")
+                        )
+
+                    if queue_forms & target_forms:
+                        removed_from_storage = True
+                        logger.info(
+                            "✅ [QUEUE REMOVAL] Matched stored item %s via identifiers %s",
+                            queued_item.get("item_id"),
+                            sorted(queue_forms & target_forms),
+                        )
+                        continue
+
+                    filtered_items.append(queued_item)
+
+                stored_items = filtered_items
                 items_after = len(stored_items)
-                
-                if items_before > items_after:
+
+                if removed_from_storage:
                     # Save updated queue back to storage
                     save_storage(stored_docs, stored_items)
                     logger.info(f"✅ [QUEUE REMOVAL] Successfully removed item {item_id} from queue ({items_before} → {items_after} items)")
                 else:
-                    logger.warning(f"⚠️ [QUEUE REMOVAL] Item {item_id} not found in queue (already removed or invalid ID)")
+                    logger.warning(f"⚠️ [QUEUE REMOVAL] Item {item_id} not found in stored queue (already removed or alternate ID)")
+                    canonical_target = canonical_identifier(item_id)
+                    if canonical_target:
+                        removed_default_ids = load_removed_default_items()
+                        if canonical_target not in removed_default_ids:
+                            removed_default_ids.add(canonical_target)
+                            save_removed_default_items(removed_default_ids)
+                            logger.info(f"✅ [QUEUE REMOVAL] Recorded default mock item {canonical_target} as completed")
+                        else:
+                            logger.info(f"ℹ️ [QUEUE REMOVAL] Default mock item {canonical_target} was already recorded as removed")
+                    else:
+                        logger.warning("⚠️ [QUEUE REMOVAL] Unable to canonicalise item_id for fallback removal")
                     
             except Exception as e:
                 logger.error(f"❌ [QUEUE REMOVAL] Failed to remove item {item_id} from queue: {e}")
