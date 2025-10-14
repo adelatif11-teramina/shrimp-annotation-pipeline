@@ -1283,9 +1283,6 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
             allowed_docs = set(export_request.doc_ids)
             storage_annotations = [ann for ann in storage_annotations if ann.get("doc_id") in allowed_docs]
 
-        if not storage_annotations:
-            raise HTTPException(status_code=404, detail="No annotations available for export")
-
         gold_exports_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         export_format = export_request.format.lower()
@@ -1293,11 +1290,17 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
 
         normalized_records = [normalize_annotation_record(ann) for ann in storage_annotations]
 
+        if not normalized_records:
+            logger.warning("⚠️ [EXPORT] No annotations available for gold export; creating empty file")
+
         if export_format == "jsonl":
             with open(export_path, 'w', encoding='utf-8') as f:
                 for record in normalized_records:
                     json.dump(record, f)
                     f.write('\n')
+            if not normalized_records:
+                # Ensure file exists even when empty
+                open(export_path, 'a', encoding='utf-8').close()
         else:
             with open(export_path, 'w', encoding='utf-8') as f:
                 json.dump(normalized_records, f, indent=2)
