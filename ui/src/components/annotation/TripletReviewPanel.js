@@ -10,16 +10,13 @@ import {
   ButtonGroup,
   Button,
   TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Tooltip,
 } from '@mui/material';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import EditIcon from '@mui/icons-material/Edit';
 import SkipNextIcon from '@mui/icons-material/SkipNext';
+import Autocomplete from '@mui/material/Autocomplete';
 
 const actionButtons = [
   { value: 'approve', label: 'Approve', icon: <CheckIcon fontSize="small" />, color: 'success' },
@@ -27,6 +24,47 @@ const actionButtons = [
   { value: 'revise', label: 'Needs Edit', icon: <EditIcon fontSize="small" />, color: 'warning' },
   { value: 'skip', label: 'Skip', icon: <SkipNextIcon fontSize="small" />, color: 'primary' },
 ];
+
+const normalizeRelationLabel = (relation) =>
+  (relation || '')
+    .toString()
+    .trim()
+    .replace(/\s+/g, '_')
+    .toUpperCase();
+
+const extractRelationSuggestions = (triplet) => {
+  const suggestions = new Set();
+
+  const addSuggestion = (value) => {
+    const normalized = normalizeRelationLabel(value);
+    if (normalized) {
+      suggestions.add(normalized);
+    }
+  };
+
+  addSuggestion(triplet?.relation);
+  addSuggestion(triplet?.edited?.relation);
+  addSuggestion(triplet?.audit?.suggested_relation);
+
+  const rawTriplet = triplet?.raw_triplet || {};
+  if (Array.isArray(rawTriplet.suggested_relations)) {
+    rawTriplet.suggested_relations.forEach(addSuggestion);
+  }
+  if (Array.isArray(rawTriplet.alternative_relations)) {
+    rawTriplet.alternative_relations.forEach(addSuggestion);
+  }
+  if (rawTriplet.suggested_relation) {
+    addSuggestion(rawTriplet.suggested_relation);
+  }
+  if (rawTriplet.relation_options) {
+    const options = Array.isArray(rawTriplet.relation_options)
+      ? rawTriplet.relation_options
+      : [rawTriplet.relation_options];
+    options.forEach(addSuggestion);
+  }
+
+  return Array.from(suggestions);
+};
 
 function TripletReviewPanel({ triplets, relationTypes, onUpdate }) {
   if (!triplets || triplets.length === 0) {
@@ -41,8 +79,6 @@ function TripletReviewPanel({ triplets, relationTypes, onUpdate }) {
     );
   }
 
-  const relationOptions = relationTypes.map((relation) => relation.toUpperCase());
-
   return (
     <Stack spacing={2} sx={{ overflowY: 'auto', pr: 1 }}>
       {triplets.map((triplet) => {
@@ -51,8 +87,43 @@ function TripletReviewPanel({ triplets, relationTypes, onUpdate }) {
         const ruleChipColor = triplet.rule_support ? 'success' : 'default';
         const head = triplet.edited?.head || triplet.head || {};
         const tail = triplet.edited?.tail || triplet.tail || {};
-        const relationValue = (triplet.edited?.relation || triplet.relation || '').toUpperCase();
+        const relationValue = normalizeRelationLabel(
+          triplet.edited?.relation || triplet.relation || '',
+        );
         const evidence = triplet.edited?.evidence ?? triplet.evidence ?? '';
+
+        const relationSuggestions = extractRelationSuggestions(triplet);
+        const hasSuggestions = relationSuggestions.length > 0;
+        const suggestionsSet = new Set(relationSuggestions);
+        const ontologyOptions = hasSuggestions
+          ? relationTypes
+              .map((relation) => normalizeRelationLabel(relation))
+              .filter((relation) => relation && !suggestionsSet.has(relation))
+          : [];
+
+        const optionObjects = hasSuggestions
+          ? [
+              ...relationSuggestions.map((relation) => ({
+                label: relation,
+                value: relation,
+                group: 'LLM Suggestions',
+              })),
+              ...ontologyOptions.map((relation) => ({
+                label: relation,
+                value: relation,
+                group: 'Ontology',
+              })),
+            ]
+          : [];
+
+        const selectedOption = optionObjects.find((option) => option.value === relationValue);
+        const autocompleteValue = relationValue
+          ? selectedOption || {
+              label: relationValue,
+              value: relationValue,
+              group: 'Custom',
+            }
+          : null;
 
         return (
           <Card key={triplet.triplet_id} variant="outlined">
@@ -102,24 +173,45 @@ function TripletReviewPanel({ triplets, relationTypes, onUpdate }) {
                     />
                   </Grid>
                   <Grid item xs={12} md={4}>
-                    <FormControl fullWidth>
-                      <InputLabel>Relation</InputLabel>
-                      <Select
-                        label="Relation"
-                        value={relationValue}
-                        onChange={(event) =>
-                          onUpdate(triplet.triplet_id, {
-                            edited: { relation: event.target.value },
-                          })
+                    <Autocomplete
+                      freeSolo
+                      options={optionObjects}
+                      value={autocompleteValue}
+                      onChange={(event, newValue) => {
+                        let nextRelation = '';
+                        if (typeof newValue === 'string') {
+                          nextRelation = normalizeRelationLabel(newValue);
+                        } else if (newValue && typeof newValue === 'object') {
+                          nextRelation = normalizeRelationLabel(newValue.value || newValue.label);
                         }
-                      >
-                        {relationOptions.map((relation) => (
-                          <MenuItem key={relation} value={relation}>
-                            {relation}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                        onUpdate(triplet.triplet_id, {
+                          edited: { relation: nextRelation },
+                        });
+                      }}
+                      groupBy={(option) => option.group || 'Custom'}
+                      isOptionEqualToValue={(option, value) => {
+                        const optionValue = typeof option === 'string' ? option : option?.value;
+                        const compareValue = typeof value === 'string' ? value : value?.value;
+                        return optionValue === compareValue;
+                      }}
+                      getOptionLabel={(option) => {
+                        if (typeof option === 'string') {
+                          return option;
+                        }
+                        return option?.label || '';
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Relation"
+                          placeholder={
+                            hasSuggestions
+                              ? 'Select or type relation'
+                              : 'Type relation manually'
+                          }
+                        />
+                      )}
+                    />
                   </Grid>
                   <Grid item xs={12} md={4}>
                     <TextField
