@@ -180,6 +180,14 @@ def generate_sample_relations(entities: List[Dict]) -> List[Dict]:
                 "confidence": 0.85,
                 "evidence": f"{species_ent['text']} infected by {pathogen_ent['text']}"
             })
+            relations.append({
+                "id": len(relations) + 1,
+                "head_id": pathogen_ent["id"],
+                "tail_id": species_ent["id"],
+                "label": "infects",
+                "confidence": 0.85,
+                "evidence": f"{pathogen_ent['text']} infects {species_ent['text']}"
+            })
     
     # Pathogen-disease relations
     for pathogen_ent in pathogens:
@@ -1306,6 +1314,11 @@ async def get_annotation_guidelines(current_user: Dict = Depends(get_current_use
                 "examples": ["Penaeus vannamei infected by WSSV"],
                 "rules": ["Link species to specific pathogens"]
             },
+            "infects": {
+                "description": "Pathogen infects host species",
+                "examples": ["Vibrio parahaemolyticus infects Penaeus vannamei"],
+                "rules": ["Use when the pathogen is the subject of the infection statement"]
+            },
             "treated_with": {
                 "description": "Treatment or medication relationship",
                 "examples": ["AHPND treated with oxytetracycline"],
@@ -1411,7 +1424,8 @@ async def get_annotation_guidelines(current_user: Dict = Depends(get_current_use
                         {"text": "80% mortality", "label": "MEASUREMENT"}
                     ],
                     "relations": [
-                        {"head": "Penaeus vannamei", "tail": "Vibrio parahaemolyticus", "relation": "infected_by"}
+                        {"head": "Penaeus vannamei", "tail": "Vibrio parahaemolyticus", "relation": "infected_by"},
+                        {"head": "Vibrio parahaemolyticus", "tail": "Penaeus vannamei", "relation": "infects"}
                     ]
                 }
             ],

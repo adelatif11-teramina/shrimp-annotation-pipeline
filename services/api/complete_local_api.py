@@ -259,6 +259,15 @@ def generate_mock_relations(entities: List[Dict]) -> List[Dict]:
                 "evidence": f"{species_ent['text']} infected with {pathogen_ent['text']}"
             })
             relation_id += 1
+            relations.append({
+                "id": relation_id,
+                "head_id": pathogen_ent["id"],
+                "tail_id": species_ent["id"],
+                "label": "infects",
+                "confidence": 0.80,
+                "evidence": f"{pathogen_ent['text']} infects {species_ent['text']}"
+            })
+            relation_id += 1
     
     # Pathogen-Disease relations
     for pathogen_ent in pathogens:

@@ -405,6 +405,13 @@ class ShimpAquacultureRuleEngine:
                 "relation": "infected_by",
                 "confidence": 0.9
             },
+            {
+                "pattern": r"infects",
+                "head_type": "PATHOGEN",
+                "tail_type": "SPECIES",
+                "relation": "infects",
+                "confidence": 0.9
+            },
             # causes pattern
             {
                 "pattern": r"caus(?:es?|ed|ing)",

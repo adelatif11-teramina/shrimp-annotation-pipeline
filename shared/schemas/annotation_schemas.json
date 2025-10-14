@@ -232,7 +232,7 @@
     "relation_label": {
       "type": "string",
       "enum": [
-        "infected_by", "causes", "treated_with", "confers_resistance_to", "resistant_to",
+        "infected_by", "infects", "causes", "treated_with", "confers_resistance_to", "resistant_to",
         "increases_risk_of", "reduces_risk_of", "expressed_in", "measurement_of",
         "sample_taken_from", "tested_with", "has_test_result", "applied_at",
         "located_in", "supplied_by", "sold_to", "uses_protocol", "certified_by",
@@ -311,6 +311,10 @@
       "infected_by": {
         "domain": ["SPECIES"],
         "range": ["PATHOGEN"]
+      },
+      "infects": {
+        "domain": ["PATHOGEN"],
+        "range": ["SPECIES"]
       },
       "causes": {
         "domain": ["PATHOGEN", "ENVIRONMENTAL_PARAM"],

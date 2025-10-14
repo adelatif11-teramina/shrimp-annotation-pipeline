@@ -136,7 +136,7 @@ class AutoAcceptSystem:
             AutoAcceptRule(
                 rule_id="infected_by_clear",
                 rule_name="Clear infection relations",
-                relation_types=["infected_by"],
+                relation_types=["infected_by", "infects"],
                 min_confidence=0.9,
                 min_agreement=0.85,
                 requires_rule_support=True,

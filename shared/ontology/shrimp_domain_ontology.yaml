@@ -433,6 +433,17 @@ relations:
     attributes:
       - confidence: "float 0-1"
       - evidence_span: "text span reference"
+
+  infects:
+    domain: PATHOGEN
+    range: SPECIES
+    description: "Pathogen infects host species"
+    notes: "Inverse of infected_by"
+    examples:
+      - "Vibrio parahaemolyticus infects Penaeus vannamei"
+    attributes:
+      - confidence: "float 0-1"
+      - evidence_span: "text span reference"
       
   causes:
     domain: [PATHOGEN, ENVIRONMENTAL_PARAM]

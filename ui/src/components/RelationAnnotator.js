@@ -25,6 +25,7 @@ import {
 const RELATION_TYPES = [
   'causes',
   'infected_by',
+  'infects',
   'treated_with',
   'prevents',
   'affects',

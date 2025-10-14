@@ -167,6 +167,12 @@ This guide provides comprehensive instructions for annotating shrimp aquaculture
 - **Example**: "*Penaeus vannamei* infected_by *Vibrio parahaemolyticus*"
 - **Evidence Required**: Explicit mention of infection
 
+#### infects
+- **Domain**: PATHOGEN
+- **Range**: SPECIES
+- **Example**: "*Vibrio parahaemolyticus* infects *Penaeus vannamei*"
+- **Evidence Required**: Explicit mention the pathogen infects the host
+
 #### causes
 - **Domain**: PATHOGEN
 - **Range**: DISEASE
@@ -296,6 +302,7 @@ For double-annotated documents:
 **Relations**:
 - Vibrio parahaemolyticus **causes** AHPND
 - Penaeus vannamei **infected_by** Vibrio parahaemolyticus
+- Vibrio parahaemolyticus **infects** Penaeus vannamei
 - 30 ppt **measurement_of** salinity
 
 ### Example 2: Complex Treatment

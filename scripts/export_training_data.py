@@ -75,9 +75,9 @@ class TrainingDataExporter:
         
         # Relation type mappings
         self.relation_labels = [
-            "infected_by", "causes", "treated_with", "resistant_to",
-            "associated_with", "measurement_of", "located_in",
-            "affects_trait", "has_variant"
+            "infected_by", "infects", "causes", "treated_with",
+            "resistant_to", "associated_with", "measurement_of",
+            "located_in", "affects_trait", "has_variant"
         ]
         
         # Topic mappings

@@ -6,7 +6,7 @@ A production-ready human-in-the-loop annotation pipeline for building high-quali
 
 This system implements a **manual + LLM-bootstrapped annotation workflow** to produce authoritative gold data for:
 - **Named Entity Recognition (NER)** - 11 entity types (SPECIES, PATHOGEN, DISEASE, etc.)
-- **Relation Extraction (RE)** - 9 relation types (causes, infected_by, treated_with, etc.)  
+- **Relation Extraction (RE)** - 9 relation types (causes, infected_by, infects, treated_with, etc.)  
 - **Topic Classification** - 10 domain topics (T_DISEASE, T_TREATMENT, etc.)
 - **Knowledge Graph Construction** - Structured domain knowledge
 

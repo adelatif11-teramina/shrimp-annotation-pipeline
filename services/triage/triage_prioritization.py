@@ -245,7 +245,7 @@ class TriagePrioritizationEngine:
             label = candidate.get("label", "")
             
             # High-impact relation types
-            if label in ["causes", "infected_by", "resistant_to", "treated_with"]:
+            if label in ["causes", "infected_by", "infects", "resistant_to", "treated_with"]:
                 return 0.8
             elif label in ["associated_with", "affects_trait"]:
                 return 0.6

@@ -105,7 +105,7 @@ React app in `ui/src/`:
 SPECIES, PATHOGEN, DISEASE, SYMPTOM, CHEMICAL, EQUIPMENT, LOCATION, DATE, MEASUREMENT, PROCESS, FEED
 
 ### Relation Types (9)
-causes, infected_by, treated_with, prevents, located_in, measured_by, occurs_at, uses, affects
+causes, infected_by, infects, treated_with, prevents, located_in, measured_by, occurs_at, uses, affects
 
 ### Topic Categories (10)
 T_DISEASE, T_TREATMENT, T_PREVENTION, T_DIAGNOSIS, T_NUTRITION, T_WATER_QUALITY, T_PRODUCTION, T_HARVEST, T_ECONOMICS, T_GENERAL

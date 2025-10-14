@@ -44,6 +44,7 @@ export const RELATION_TYPES = Object.freeze([
 
   // Core biological relations (v2.0)
   'infected_by',
+  'infects',
   'causes',
   'treated_with',
   'confers_resistance_to',
