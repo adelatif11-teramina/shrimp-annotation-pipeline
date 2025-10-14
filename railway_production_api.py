@@ -90,7 +90,7 @@ try:
         )
     
     # Import required modules
-    from fastapi import HTTPException, Depends
+    from fastapi import HTTPException, Depends, WebSocket, Body
     from fastapi.responses import JSONResponse, FileResponse
     from fastapi.staticfiles import StaticFiles
     from pydantic import BaseModel
@@ -153,6 +153,7 @@ try:
             logger.error(f"❌ /tmp permissions: {oct(os.stat('/tmp').st_mode)}")
 
     removed_default_items_file = Path("/tmp/railway_removed_defaults.json")
+    gold_exports_dir = Path("/tmp/railway_gold_exports")
 
     def canonical_identifier(value: Any) -> Optional[str]:
         """Normalise identifiers so numeric vs string forms compare consistently."""
@@ -250,6 +251,33 @@ try:
             
         except Exception as e:
             logger.error(f"❌ Failed to save annotations storage: {e}")
+
+    def normalize_annotation_record(record: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize stored annotation into UI-friendly shape."""
+        if not record:
+            return {}
+
+        decision = record.get("decision") or record.get("status") or "unknown"
+        normalized = {
+            "id": record.get("annotation_id") or record.get("id"),
+            "annotation_id": record.get("annotation_id") or record.get("id"),
+            "item_id": record.get("item_id"),
+            "doc_id": record.get("doc_id"),
+            "sent_id": record.get("sent_id"),
+            "text": record.get("text", ""),
+            "decision": decision,
+            "status": record.get("status") or ("completed" if decision == "accept" else decision),
+            "confidence": record.get("confidence"),
+            "annotator": record.get("annotator"),
+            "notes": record.get("notes", ""),
+            "topics": record.get("topics", []),
+            "entities": record.get("entities", []),
+            "relations": record.get("relations", []),
+            "triplets": record.get("triplets", []),
+            "created_at": record.get("created_at"),
+            "updated_at": record.get("updated_at"),
+        }
+        return normalized
     
     # REQUEST MODELS
     class DraftAnnotationRequest(BaseModel):
@@ -263,6 +291,12 @@ try:
         sent_id: str
         text: str
         title: Optional[str] = None
+
+    class GoldExportRequest(BaseModel):
+        format: str = "jsonl"  # jsonl, json
+        doc_ids: Optional[List[str]] = None
+        include_notes: bool = True
+        include_topics: bool = True
 
     # HEALTH CHECK
     @app.get("/api/health")
@@ -351,6 +385,47 @@ try:
         logger.info(f"🔍 [DEBUG] Response size: {response_size} bytes")
         
         return response
+
+    @app.post("/api/triage/items/{item_id}/skip")
+    async def skip_triage_item(item_id: str, request: Optional[Dict[str, Any]] = Body(default=None)):
+        """Mark a triage item as skipped."""
+        canonical_target = canonical_identifier(item_id)
+        logger.info(f"⏭️ [TRIAGE] Skip requested for item {item_id} (canonical={canonical_target})")
+
+        if not canonical_target:
+            raise HTTPException(status_code=400, detail="Invalid item identifier")
+
+        stored_docs, stored_items = load_storage()
+        updated = False
+
+        for item in stored_items:
+            if canonical_identifier(item.get("item_id")) == canonical_target:
+                item["status"] = "skipped"
+                item["skipped_at"] = datetime.datetime.now().isoformat()
+                item["updated_at"] = datetime.datetime.now().isoformat()
+                if request and isinstance(request, dict):
+                    item["skip_reason"] = request.get("reason")
+                updated = True
+                logger.info(f"⏭️ [TRIAGE] Marked stored item {item.get('item_id')} as skipped")
+                break
+
+        if updated:
+            save_storage(stored_docs, stored_items)
+        else:
+            removed_defaults = load_removed_default_items()
+            if canonical_target not in removed_defaults:
+                removed_defaults.add(canonical_target)
+                save_removed_default_items(removed_defaults)
+                logger.info(f"ℹ️ [TRIAGE] Recorded default mock item {canonical_target} as skipped (not in storage)")
+            else:
+                logger.info(f"ℹ️ [TRIAGE] Default mock item {canonical_target} already recorded as skipped")
+
+        return {
+            "status": "success",
+            "item_id": item_id,
+            "canonical_item_id": canonical_target,
+            "updated": updated
+        }
 
     # DOCUMENTS ENDPOINT 
     @app.get("/api/documents")
@@ -799,10 +874,22 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
         sort_by: str = "created_at",
         limit: int = 20,
         offset: int = 0,
-        status: Optional[str] = None
+        status: Optional[str] = None,
+        decision: Optional[str] = None,
+        doc_id: Optional[str] = None,
+        user_id: Optional[str] = None
     ):
         """Get annotations list"""
-        logger.info(f"📝 [ANNOTATIONS] List requested: sort_by={sort_by}, limit={limit}")
+        logger.info(
+            "📝 [ANNOTATIONS] List requested: sort_by=%s, limit=%s, offset=%s, status=%s, decision=%s, doc_id=%s, user_id=%s",
+            sort_by,
+            limit,
+            offset,
+            status,
+            decision,
+            doc_id,
+            user_id,
+        )
         
         # Load annotations from persistent storage
         storage_annotations = load_annotations_storage()
@@ -846,28 +933,67 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
                 }
             ]
         
+        def is_all(value: Optional[str]) -> bool:
+            if value is None:
+                return True
+            value_str = str(value).strip().lower()
+            return value_str in {"", "all", "null", "undefined"}
+
+        filtered_annotations = storage_annotations
+
+        if not is_all(status):
+            filtered_annotations = [
+                ann for ann in filtered_annotations
+                if (ann.get("status") or ann.get("decision")) == status
+            ]
+
+        if not is_all(decision):
+            filtered_annotations = [
+                ann for ann in filtered_annotations
+                if (ann.get("decision") or ann.get("status")) == decision
+            ]
+
+        if doc_id and not is_all(doc_id):
+            filtered_annotations = [ann for ann in filtered_annotations if ann.get("doc_id") == doc_id]
+
+        if user_id and not is_all(user_id):
+            filtered_annotations = [ann for ann in filtered_annotations if ann.get("annotator") == user_id]
+
         # Sort annotations
         if sort_by == "created_at":
-            storage_annotations.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            filtered_annotations.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         elif sort_by == "updated_at":
-            storage_annotations.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+            filtered_annotations.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
         elif sort_by == "confidence":
-            storage_annotations.sort(key=lambda x: x.get("confidence", 0), reverse=True)
-        
-        # Filter by status if specified
-        if status:
-            storage_annotations = [ann for ann in storage_annotations if ann.get("status") == status]
-        
-        logger.info(f"📝 [ANNOTATIONS] Returning {len(storage_annotations)} annotations (filtered by status: {status})")
-        
+            filtered_annotations.sort(key=lambda x: x.get("confidence", 0), reverse=True)
+
+        total_filtered = len(filtered_annotations)
+        page_slice = filtered_annotations[offset:offset + limit]
+        normalized_annotations = [normalize_annotation_record(ann) for ann in page_slice]
+
+        logger.info(f"📝 [ANNOTATIONS] Returning {len(normalized_annotations)} annotations (total filtered={total_filtered})")
+
         return {
-            "annotations": storage_annotations[offset:offset+limit],
-            "total": len(storage_annotations),
+            "annotations": normalized_annotations,
+            "total": total_filtered,
             "limit": limit,
             "offset": offset,
-            "has_more": offset + limit < len(storage_annotations),
+            "has_more": offset + limit < total_filtered,
             "from_storage": True
         }
+
+    @app.get("/api/annotations/{annotation_id}")
+    async def get_annotation_detail(annotation_id: str):
+        """Retrieve details for a specific annotation."""
+        storage_annotations = load_annotations_storage()
+        target = canonical_identifier(annotation_id) or str(annotation_id).strip()
+
+        for record in storage_annotations:
+            record_id = canonical_identifier(record.get("annotation_id")) or canonical_identifier(record.get("id"))
+            if record_id == target:
+                return {"annotation": normalize_annotation_record(record)}
+
+        raise HTTPException(status_code=404, detail=f"Annotation {annotation_id} not found")
 
     @app.get("/api/annotations/export")
     async def export_annotations(
@@ -946,6 +1072,43 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported export format: {format}")
 
+    @app.post("/api/export/gold")
+    async def export_gold_annotations(export_request: GoldExportRequest):
+        """Export annotations in gold format for downstream use."""
+        storage_annotations = load_annotations_storage()
+
+        if export_request.doc_ids:
+            allowed_docs = set(export_request.doc_ids)
+            storage_annotations = [ann for ann in storage_annotations if ann.get("doc_id") in allowed_docs]
+
+        if not storage_annotations:
+            raise HTTPException(status_code=404, detail="No annotations available for export")
+
+        gold_exports_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        export_format = export_request.format.lower()
+        export_path = gold_exports_dir / f"gold_export_{timestamp}.{export_format if export_format in {'json', 'jsonl'} else 'json'}"
+
+        normalized_records = [normalize_annotation_record(ann) for ann in storage_annotations]
+
+        if export_format == "jsonl":
+            with open(export_path, 'w', encoding='utf-8') as f:
+                for record in normalized_records:
+                    json.dump(record, f)
+                    f.write('\n')
+        else:
+            with open(export_path, 'w', encoding='utf-8') as f:
+                json.dump(normalized_records, f, indent=2)
+
+        logger.info(f"📤 [EXPORT] Gold annotations saved to {export_path} ({len(normalized_records)} items)")
+
+        return {
+            "status": "success",
+            "export_path": str(export_path),
+            "format": export_request.format,
+            "item_count": len(normalized_records)
+        }
+
     @app.get("/api/triage/statistics")
     async def get_triage_statistics():
         """Get triage queue statistics"""
@@ -964,51 +1127,54 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
             "uploaded_items": len(stored_items)
         }
 
-    # WEBSOCKET ENDPOINT
-    @app.websocket("/ws/anonymous")
-    async def websocket_endpoint(websocket):
-        """WebSocket connection for real-time updates"""
-        # Extract query parameters from the WebSocket URL
+    async def _websocket_handler(websocket: WebSocket, user_id: str):
+        """Shared WebSocket handler for presence and echo messaging."""
         query_params = websocket.query_params
-        username = query_params.get('username', 'Anonymous')
+        username = query_params.get('username', user_id or 'Anonymous')
         role = query_params.get('role', 'annotator')
-        
-        logger.info(f"🔗 [WEBSOCKET] Connection attempt from: {username} (role: {role})")
-        
+
+        logger.info(f"🔗 [WEBSOCKET] Connection attempt from: {username} (role: {role}, user_id: {user_id})")
+
         try:
             await websocket.accept()
             logger.info(f"✅ [WEBSOCKET] Connected: {username}")
-            
-            # Send welcome message
+
             await websocket.send_json({
                 "type": "connection",
                 "status": "connected",
                 "user": username,
                 "role": role,
-                "timestamp": "2024-01-01T00:00:00Z"
+                "user_id": user_id,
+                "timestamp": datetime.datetime.now().isoformat()
             })
-            
-            # Keep connection alive
+
             while True:
                 try:
                     data = await websocket.receive_json()
                     logger.info(f"📨 [WEBSOCKET] Message from {username}: {data.get('type', 'unknown')}")
-                    
-                    # Echo back
+
                     await websocket.send_json({
                         "type": "echo",
                         "original": data,
-                        "timestamp": "2024-01-01T00:00:00Z"
+                        "timestamp": datetime.datetime.now().isoformat()
                     })
-                    
+
                 except Exception as e:
                     logger.warning(f"⚠️ [WEBSOCKET] Message error for {username}: {e}")
                     break
-                    
+
         except Exception as e:
             logger.error(f"❌ [WEBSOCKET] Connection error for {username}: {e}")
         finally:
             logger.info(f"🔌 [WEBSOCKET] Disconnected: {username}")
+
+    @app.websocket("/ws/{user_id}")
+    async def websocket_user_endpoint(websocket: WebSocket, user_id: str):
+        await _websocket_handler(websocket, user_id)
+
+    @app.websocket("/ws/anonymous")
+    async def websocket_legacy_endpoint(websocket: WebSocket):
+        await _websocket_handler(websocket, "anonymous")
 
     # ANNOTATION DECISION ENDPOINT
     @app.post("/api/annotations/decide")
