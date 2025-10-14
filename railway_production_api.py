@@ -1156,19 +1156,6 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
             "from_storage": True
         }
 
-    @app.get("/api/annotations/{annotation_id}")
-    async def get_annotation_detail(annotation_id: str):
-        """Retrieve details for a specific annotation."""
-        storage_annotations = load_annotation_records(include_mock=True)
-        target = canonical_identifier(annotation_id) or str(annotation_id).strip()
-
-        for record in storage_annotations:
-            record_id = canonical_identifier(record.get("annotation_id")) or canonical_identifier(record.get("id"))
-            if record_id == target:
-                return {"annotation": normalize_annotation_record(record)}
-
-        raise HTTPException(status_code=404, detail=f"Annotation {annotation_id} not found")
-
     @app.get("/api/annotations/export")
     async def export_annotations(
         sort_by: str = "created_at",
@@ -1273,6 +1260,19 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
             )
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported export format: {format}")
+
+    @app.get("/api/annotations/{annotation_id}")
+    async def get_annotation_detail(annotation_id: str):
+        """Retrieve details for a specific annotation."""
+        storage_annotations = load_annotation_records(include_mock=True)
+        target = canonical_identifier(annotation_id) or str(annotation_id).strip()
+
+        for record in storage_annotations:
+            record_id = canonical_identifier(record.get("annotation_id")) or canonical_identifier(record.get("id"))
+            if record_id == target:
+                return {"annotation": normalize_annotation_record(record)}
+
+        raise HTTPException(status_code=404, detail=f"Annotation {annotation_id} not found")
 
     @app.post("/api/export/gold")
     async def export_gold_annotations(export_request: GoldExportRequest):
