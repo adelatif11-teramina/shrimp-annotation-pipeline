@@ -97,6 +97,7 @@ try:
     from typing import Optional, Dict, Any, List, Set
     import datetime
     import json
+    from collections import defaultdict
     
     # PERSISTENT STORAGE - THE SINGLE SOURCE OF TRUTH
     storage_file = Path("/tmp/railway_storage.json")
@@ -154,6 +155,71 @@ try:
 
     removed_default_items_file = Path("/tmp/railway_removed_defaults.json")
     gold_exports_dir = Path("/tmp/railway_gold_exports")
+
+    SAMPLE_ANNOTATIONS: List[Dict[str, Any]] = [
+        {
+            "annotation_id": 1,
+            "doc_id": "doc_1",
+            "sent_id": "sent_1",
+            "text": "WSSV causes severe mortality in shrimp farms.",
+            "entities": [
+                {"text": "WSSV", "type": "PATHOGEN", "start": 0, "end": 4}
+            ],
+            "relations": [
+                {"head": "WSSV", "relation": "CAUSES", "tail": "mortality"}
+            ],
+            "status": "completed",
+            "confidence": 0.9,
+            "annotator": "demo",
+            "decision": "accept",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T01:00:00Z"
+        },
+        {
+            "annotation_id": 2,
+            "doc_id": "doc_2",
+            "sent_id": "sent_2",
+            "text": "PCR screening helps detect viral pathogens early.",
+            "entities": [
+                {"text": "PCR screening", "type": "TEST_TYPE", "start": 0, "end": 13}
+            ],
+            "relations": [
+                {"head": "PCR screening", "relation": "DETECTS", "tail": "viral pathogens"}
+            ],
+            "status": "pending",
+            "confidence": 0.85,
+            "annotator": "demo",
+            "decision": "accept",
+            "created_at": "2024-01-01T02:00:00Z",
+            "updated_at": "2024-01-01T03:00:00Z"
+        }
+    ]
+
+    def get_mock_triage_items() -> List[Dict[str, Any]]:
+        return [
+            {
+                "item_id": 1,
+                "doc_id": "doc_1",
+                "sent_id": "sent_1",
+                "text": "White Spot Syndrome Virus (WSSV) is one of the most devastating pathogens affecting Pacific white shrimp.",
+                "priority_score": 0.95,
+                "confidence": 0.8,
+                "status": "pending",
+                "priority_level": "critical",
+                "created_at": "2024-01-01T00:00:00Z"
+            },
+            {
+                "item_id": 2,
+                "doc_id": "doc_2",
+                "sent_id": "sent_2",
+                "text": "PCR screening is critical for early detection of aquaculture pathogens.",
+                "priority_score": 0.87,
+                "confidence": 0.75,
+                "status": "pending",
+                "priority_level": "high",
+                "created_at": "2024-01-01T01:00:00Z"
+            }
+        ]
 
     def canonical_identifier(value: Any) -> Optional[str]:
         """Normalise identifiers so numeric vs string forms compare consistently."""
@@ -278,6 +344,188 @@ try:
             "updated_at": record.get("updated_at"),
         }
         return normalized
+
+    def filter_annotations(
+        records: List[Dict[str, Any]],
+        *,
+        status: Optional[str] = None,
+        decision: Optional[str] = None,
+        doc_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        def is_all(value: Optional[str]) -> bool:
+            if value is None:
+                return True
+            value_str = str(value).strip().lower()
+            return value_str in {"", "all", "null", "undefined"}
+
+        filtered = records
+
+        if not is_all(status):
+            filtered = [
+                ann for ann in filtered
+                if (ann.get("status") or ann.get("decision")) == status
+            ]
+
+        if not is_all(decision):
+            filtered = [
+                ann for ann in filtered
+                if (ann.get("decision") or ann.get("status")) == decision
+            ]
+
+        if doc_id and not is_all(doc_id):
+            filtered = [ann for ann in filtered if ann.get("doc_id") == doc_id]
+
+        if user_id and not is_all(user_id):
+            filtered = [ann for ann in filtered if ann.get("annotator") == user_id]
+
+        return filtered
+
+    def load_annotation_records(include_mock: bool = True) -> List[Dict[str, Any]]:
+        records = load_annotations_storage()
+        if include_mock and not records:
+            # Return shallow copies to avoid accidental mutation of the sample data
+            return [dict(record) for record in SAMPLE_ANNOTATIONS]
+        return records
+
+    def compute_annotation_statistics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Compute summary, per-user, and per-date statistics for annotations."""
+        normalized = [normalize_annotation_record(record) for record in records]
+
+        if not normalized:
+            return {
+                "summary": {
+                    "total_annotations": 0,
+                    "accepted": 0,
+                    "rejected": 0,
+                    "modified": 0,
+                    "skipped": 0,
+                    "pending": 0,
+                    "acceptance_rate": 0.0,
+                    "avg_confidence": 0.0,
+                    "last_updated": None,
+                },
+                "annotations": [],
+                "by_user": [],
+                "by_date": [],
+            }
+
+        total = len(normalized)
+        accepted = sum(1 for ann in normalized if (ann.get("decision") or "").lower() in {"accept", "accepted"})
+        rejected = sum(1 for ann in normalized if (ann.get("decision") or "").lower() in {"reject", "rejected"})
+        modified = sum(1 for ann in normalized if (ann.get("decision") or "").lower() == "modified")
+        skipped = sum(1 for ann in normalized if (ann.get("decision") or "").lower() == "skip")
+        pending = sum(1 for ann in normalized if (ann.get("status") or "").lower() == "pending")
+
+        confidences = [ann.get("confidence") for ann in normalized if isinstance(ann.get("confidence"), (int, float))]
+        avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+
+        timestamps = [
+            datetime.datetime.fromisoformat((ann.get("updated_at") or ann.get("created_at") or datetime.datetime.now().isoformat()).replace('Z', '+00:00'))
+            for ann in normalized
+        ]
+        last_updated = max(timestamps).isoformat() if timestamps else None
+
+        summary = {
+            "total_annotations": total,
+            "accepted": accepted,
+            "rejected": rejected,
+            "modified": modified,
+            "skipped": skipped,
+            "pending": pending,
+            "completed_annotations": accepted + modified,
+            "acceptance_rate": (accepted / total) * 100 if total else 0.0,
+            "avg_confidence": avg_confidence,
+            "last_updated": last_updated,
+        }
+
+        by_user_map: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
+            "user_id": None,
+            "username": None,
+            "total": 0,
+            "accepted": 0,
+            "rejected": 0,
+            "modified": 0,
+            "skipped": 0,
+            "avg_confidence": 0.0,
+            "_confidence_sum": 0.0,
+        })
+
+        for ann in normalized:
+            annotator = ann.get("annotator") or "unknown"
+            entry = by_user_map[annotator]
+            entry["user_id"] = annotator
+            entry["username"] = annotator
+            entry["total"] += 1
+            decision = (ann.get("decision") or "").lower()
+            if decision in {"accept", "accepted"}:
+                entry["accepted"] += 1
+            elif decision in {"reject", "rejected"}:
+                entry["rejected"] += 1
+            elif decision == "modified":
+                entry["modified"] += 1
+            elif decision == "skip":
+                entry["skipped"] += 1
+
+            conf = ann.get("confidence")
+            if isinstance(conf, (int, float)):
+                entry["_confidence_sum"] += conf
+
+        by_user = []
+        for annotator, stats in by_user_map.items():
+            total_user = stats["total"]
+            acceptance_rate = (stats["accepted"] / total_user) * 100 if total_user else 0.0
+            avg_user_conf = stats["_confidence_sum"] / total_user if total_user and stats["_confidence_sum"] else 0.0
+            stats.pop("_confidence_sum", None)
+            stats["acceptance_rate"] = acceptance_rate
+            stats["avg_confidence"] = avg_user_conf
+            stats["avg_time_per_annotation"] = 0  # Placeholder; no timing data available
+            by_user.append(stats)
+
+        by_user.sort(key=lambda x: x["total"], reverse=True)
+
+        by_date_map: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
+            "date": None,
+            "total": 0,
+            "accepted": 0,
+            "rejected": 0,
+            "modified": 0,
+        })
+
+        for ann in normalized:
+            dt_str = ann.get("created_at") or ann.get("updated_at")
+            try:
+                dt = datetime.datetime.fromisoformat(dt_str.replace('Z', '+00:00')) if dt_str else datetime.datetime.now()
+            except Exception:
+                dt = datetime.datetime.now()
+            date_key = dt.date().isoformat()
+            bucket = by_date_map[date_key]
+            bucket["date"] = date_key
+            bucket["total"] += 1
+            decision = (ann.get("decision") or "").lower()
+            if decision in {"accept", "accepted"}:
+                bucket["accepted"] += 1
+            elif decision in {"reject", "rejected"}:
+                bucket["rejected"] += 1
+            elif decision == "modified":
+                bucket["modified"] += 1
+
+        by_date = sorted(by_date_map.values(), key=lambda x: x["date"])
+
+        # Trim annotations list to the most recent 200 entries for UI responsiveness
+        annotations_sorted = sorted(
+            normalized,
+            key=lambda ann: (ann.get("created_at") or ann.get("updated_at") or ""),
+            reverse=True,
+        )
+        annotations_limited = annotations_sorted[:200]
+
+        return {
+            "summary": summary,
+            "annotations": annotations_limited,
+            "by_user": by_user,
+            "by_date": by_date,
+        }
     
     # REQUEST MODELS
     class DraftAnnotationRequest(BaseModel):
@@ -314,28 +562,7 @@ try:
         logger.info(f"📊 [SINGLE TRIAGE] Loaded from storage: {len(stored_items)} items")
         
         # Mock items for demonstration
-        mock_items = [
-            {
-                "item_id": 1,
-                "doc_id": "doc_1",
-                "sent_id": "sent_1",
-                "text": "White Spot Syndrome Virus (WSSV) is one of the most devastating pathogens affecting Pacific white shrimp.",
-                "priority_score": 0.95,
-                "confidence": 0.8,
-                "status": "pending",
-                "created_at": "2024-01-01T00:00:00Z"
-            },
-            {
-                "item_id": 2,
-                "doc_id": "doc_2",
-                "sent_id": "sent_2", 
-                "text": "PCR screening is critical for early detection of aquaculture pathogens.",
-                "priority_score": 0.87,
-                "confidence": 0.75,
-                "status": "pending",
-                "created_at": "2024-01-01T01:00:00Z"
-            }
-        ]
+        mock_items = get_mock_triage_items()
         
         removed_default_ids = load_removed_default_items()
         if removed_default_ids:
@@ -348,6 +575,18 @@ try:
 
         # Combine mock items with uploaded items (mock first for accessibility)
         all_items = mock_items + stored_items
+
+        for item in all_items:
+            if not item.get("priority_level"):
+                score = item.get("priority_score") or 0
+                if score >= 0.85:
+                    item["priority_level"] = "critical"
+                elif score >= 0.7:
+                    item["priority_level"] = "high"
+                elif score >= 0.5:
+                    item["priority_level"] = "medium"
+                else:
+                    item["priority_level"] = "low"
         
         # Filter by status if specified
         if status and status != "undefined" and status != "null" and status.lower() != "all items":
@@ -790,30 +1029,43 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
     @app.get("/api/annotations/statistics")
     async def get_annotation_statistics():
         """Get annotation statistics"""
-        return {
-            "total_annotations": 35,
-            "completed_annotations": 15,
-            "pending_annotations": 12,
-            "in_progress_annotations": 8,
-            "total_documents": 2,
-            "annotated_documents": 1,
-            "pending_documents": 1
-        }
+        storage_annotations = load_annotation_records(include_mock=True)
+        stats = compute_annotation_statistics(storage_annotations)
+
+        # Include additional summary shortcuts for legacy UI expectations
+        summary = stats.get("summary", {})
+        stats.update({
+            "total_annotations": summary.get("total_annotations", 0),
+            "completed_annotations": summary.get("completed_annotations", 0),
+            "pending_annotations": summary.get("pending", 0),
+        })
+
+        return stats
 
     # MISSING ENDPOINTS THAT FRONTEND EXPECTS
     @app.get("/api/statistics/overview")
     async def get_statistics_overview():
         """Get overview statistics for dashboard"""
         logger.info("📊 [STATS] Overview statistics requested")
+
+        stored_docs, stored_items = load_storage()
+        annotations = compute_annotation_statistics(load_annotation_records(include_mock=True))
+        summary = annotations.get("summary", {})
+
+        unique_users = len({user.get("user_id") for user in annotations.get("by_user", [])})
+
+        pending_triage = len([item for item in stored_items if (item.get("status") or "").lower() != "completed"])
+
         return {
-            "total_documents": 3,
-            "total_annotations": 35,
-            "total_candidates": 67,
-            "active_users": 1,
-            "pending_triage_items": 5,
-            "completed_annotations": 15,
-            "annotation_rate": 0.75,
-            "avg_confidence": 0.82
+            "total_documents": len(stored_docs),
+            "total_annotations": summary.get("total_annotations", 0),
+            "total_candidates": len(stored_items),
+            "active_users": unique_users,
+            "pending_triage_items": pending_triage,
+            "completed_annotations": summary.get("completed_annotations", 0),
+            "annotation_rate": summary.get("acceptance_rate", 0) / 100 if summary.get("total_annotations", 0) else 0,
+            "avg_confidence": summary.get("avg_confidence", 0),
+            "last_updated": summary.get("last_updated"),
         }
 
     @app.get("/api/triage/next")
@@ -825,28 +1077,7 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
         stored_docs, stored_items = load_storage()
         
         # Use same ordering as triage queue to ensure consistency
-        mock_items = [
-            {
-                "item_id": 1,
-                "doc_id": "doc_1",
-                "sent_id": "sent_1", 
-                "text": "White Spot Syndrome Virus (WSSV) is one of the most devastating pathogens affecting Pacific white shrimp.",
-                "priority_score": 0.95,
-                "confidence": 0.8,
-                "status": "pending",
-                "created_at": "2024-01-01T00:00:00Z"
-            },
-            {
-                "item_id": 2,
-                "doc_id": "doc_2",
-                "sent_id": "sent_2", 
-                "text": "PCR screening is critical for early detection of aquaculture pathogens.",
-                "priority_score": 0.87,
-                "confidence": 0.75,
-                "status": "pending",
-                "created_at": "2024-01-01T01:00:00Z"
-            }
-        ]
+        mock_items = get_mock_triage_items()
         
         # Combine in same order as queue (mock first, then stored)
         all_items = mock_items + stored_items
@@ -891,73 +1122,16 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
             user_id,
         )
         
-        # Load annotations from persistent storage
-        storage_annotations = load_annotations_storage()
+        # Load annotations from persistent storage (with mock fallback for demo environments)
+        storage_annotations = load_annotation_records(include_mock=True)
         
-        # Add some mock annotations if storage is empty (for demo purposes)
-        if not storage_annotations:
-            storage_annotations = [
-                {
-                    "annotation_id": 1,
-                    "doc_id": "doc_1",
-                    "sent_id": "sent_1",
-                    "text": "WSSV causes severe mortality in shrimp farms.",
-                    "entities": [
-                        {"text": "WSSV", "type": "PATHOGEN", "start": 0, "end": 4}
-                    ],
-                    "relations": [
-                        {"head": "WSSV", "relation": "CAUSES", "tail": "mortality"}
-                    ],
-                    "status": "completed",
-                    "confidence": 0.9,
-                    "annotator": "demo", 
-                    "created_at": "2024-01-01T00:00:00Z",
-                    "updated_at": "2024-01-01T01:00:00Z"
-                },
-                {
-                    "annotation_id": 2,
-                    "doc_id": "doc_2", 
-                    "sent_id": "sent_2",
-                    "text": "PCR screening helps detect viral pathogens early.",
-                    "entities": [
-                        {"text": "PCR screening", "type": "TEST_TYPE", "start": 0, "end": 13}
-                    ],
-                    "relations": [
-                        {"head": "PCR screening", "relation": "DETECTS", "tail": "viral pathogens"}
-                    ],
-                    "status": "pending",
-                    "confidence": 0.85,
-                    "annotator": "demo",
-                    "created_at": "2024-01-01T02:00:00Z", 
-                    "updated_at": "2024-01-01T03:00:00Z"
-                }
-            ]
-        
-        def is_all(value: Optional[str]) -> bool:
-            if value is None:
-                return True
-            value_str = str(value).strip().lower()
-            return value_str in {"", "all", "null", "undefined"}
-
-        filtered_annotations = storage_annotations
-
-        if not is_all(status):
-            filtered_annotations = [
-                ann for ann in filtered_annotations
-                if (ann.get("status") or ann.get("decision")) == status
-            ]
-
-        if not is_all(decision):
-            filtered_annotations = [
-                ann for ann in filtered_annotations
-                if (ann.get("decision") or ann.get("status")) == decision
-            ]
-
-        if doc_id and not is_all(doc_id):
-            filtered_annotations = [ann for ann in filtered_annotations if ann.get("doc_id") == doc_id]
-
-        if user_id and not is_all(user_id):
-            filtered_annotations = [ann for ann in filtered_annotations if ann.get("annotator") == user_id]
+        filtered_annotations = filter_annotations(
+            storage_annotations,
+            status=status,
+            decision=decision,
+            doc_id=doc_id,
+            user_id=user_id,
+        )
 
         # Sort annotations
         if sort_by == "created_at":
@@ -985,7 +1159,7 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
     @app.get("/api/annotations/{annotation_id}")
     async def get_annotation_detail(annotation_id: str):
         """Retrieve details for a specific annotation."""
-        storage_annotations = load_annotations_storage()
+        storage_annotations = load_annotation_records(include_mock=True)
         target = canonical_identifier(annotation_id) or str(annotation_id).strip()
 
         for record in storage_annotations:
@@ -999,75 +1173,103 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
     async def export_annotations(
         sort_by: str = "created_at",
         format: str = "json",
-        status: Optional[str] = None
+        status: Optional[str] = None,
+        decision: Optional[str] = None,
+        doc_id: Optional[str] = None,
+        user_id: Optional[str] = None,
     ):
         """Export annotations in various formats"""
-        logger.info(f"📤 [EXPORT] Annotation export requested: format={format}, status={status}")
-        
-        # Load annotations from persistent storage
-        storage_annotations = load_annotations_storage()
-        
-        # Filter by status if specified
-        if status:
-            storage_annotations = [ann for ann in storage_annotations if ann.get("status") == status]
-        
-        # Sort annotations
+        logger.info(
+            "📤 [EXPORT] Annotation export requested: format=%s, status=%s, decision=%s, doc_id=%s, user_id=%s",
+            format,
+            status,
+            decision,
+            doc_id,
+            user_id,
+        )
+
+        storage_annotations = load_annotation_records(include_mock=True)
+
+        filtered_annotations = filter_annotations(
+            storage_annotations,
+            status=status,
+            decision=decision,
+            doc_id=doc_id,
+            user_id=user_id,
+        )
+
         if sort_by == "created_at":
-            storage_annotations.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            filtered_annotations.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         elif sort_by == "updated_at":
-            storage_annotations.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
-        
-        logger.info(f"📤 [EXPORT] Exporting {len(storage_annotations)} annotations in {format} format")
-        
+            filtered_annotations.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+        elif sort_by == "confidence":
+            filtered_annotations.sort(key=lambda x: x.get("confidence", 0), reverse=True)
+
+        normalized_records = [normalize_annotation_record(ann) for ann in filtered_annotations]
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+
         if format.lower() == "json":
-            return {
+            from fastapi.responses import Response
+
+            payload = {
                 "export_metadata": {
                     "format": "json",
-                    "total_annotations": len(storage_annotations),
+                    "total_annotations": len(normalized_records),
                     "export_timestamp": datetime.datetime.now().isoformat(),
-                    "filtered_by_status": status
+                    "filtered_by_status": status,
+                    "filtered_by_decision": decision,
+                    "filtered_by_doc": doc_id,
+                    "filtered_by_user": user_id,
                 },
-                "annotations": storage_annotations
+                "annotations": normalized_records,
             }
+
+            json_content = json.dumps(payload, indent=2)
+            filename = f"annotations_export_{timestamp}.json"
+            return Response(
+                content=json_content,
+                media_type="application/json",
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
+            )
         elif format.lower() == "csv":
-            # Convert to CSV format
             import io
             import csv
-            
+
             output = io.StringIO()
             writer = csv.writer(output)
-            
-            # Write header
+
             writer.writerow([
-                "annotation_id", "doc_id", "sent_id", "text", "status", 
-                "confidence", "annotator", "created_at", "entities_count", 
-                "relations_count", "triplets_count"
+                "annotation_id", "doc_id", "sent_id", "text", "decision",
+                "status", "confidence", "annotator", "created_at", "updated_at",
+                "entities_count", "relations_count", "triplets_count"
             ])
-            
-            # Write data
-            for ann in storage_annotations:
+
+            for ann in normalized_records:
                 writer.writerow([
                     ann.get("annotation_id", ""),
                     ann.get("doc_id", ""),
                     ann.get("sent_id", ""),
-                    ann.get("text", "")[:100],  # Truncate long text
+                    ann.get("text", "")[:100],
+                    ann.get("decision", ""),
                     ann.get("status", ""),
                     ann.get("confidence", ""),
                     ann.get("annotator", ""),
                     ann.get("created_at", ""),
+                    ann.get("updated_at", ""),
                     len(ann.get("entities", [])),
                     len(ann.get("relations", [])),
                     len(ann.get("triplets", []))
                 ])
-            
+
             csv_content = output.getvalue()
             output.close()
-            
+
             from fastapi.responses import Response
+            filename = f"annotations_export_{timestamp}.csv"
             return Response(
                 content=csv_content,
                 media_type="text/csv",
-                headers={"Content-Disposition": f"attachment; filename=annotations_export_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"}
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
             )
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported export format: {format}")
@@ -1075,7 +1277,7 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
     @app.post("/api/export/gold")
     async def export_gold_annotations(export_request: GoldExportRequest):
         """Export annotations in gold format for downstream use."""
-        storage_annotations = load_annotations_storage()
+        storage_annotations = load_annotation_records(include_mock=True)
 
         if export_request.doc_ids:
             allowed_docs = set(export_request.doc_ids)
@@ -1116,15 +1318,43 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
         
         # Load from persistent storage
         stored_docs, stored_items = load_storage()
-        
+        mock_items = get_mock_triage_items()
+
+        all_items = mock_items + stored_items
+
+        for item in all_items:
+            if not item.get("priority_level"):
+                score = item.get("priority_score") or 0
+                if score >= 0.85:
+                    item["priority_level"] = "critical"
+                elif score >= 0.7:
+                    item["priority_level"] = "high"
+                elif score >= 0.5:
+                    item["priority_level"] = "medium"
+                else:
+                    item["priority_level"] = "low"
+
+        total_items = len(all_items)
+        pending_items = len([item for item in all_items if (item.get("status") or "").lower() == "pending"])
+        in_review_items = len([item for item in all_items if (item.get("status") or "").lower() in {"in_review", "assigned"}])
+        completed_items = len([item for item in all_items if (item.get("status") or "").lower() == "completed"])
+
+        priority_scores = [item.get("priority_score") for item in all_items if isinstance(item.get("priority_score"), (int, float))]
+        avg_priority_score = sum(priority_scores) / len(priority_scores) if priority_scores else 0.0
+
+        confidences = [item.get("confidence") for item in all_items if isinstance(item.get("confidence"), (int, float))]
+        avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+
         return {
-            "total_items": len(stored_items) + 5,  # Include uploaded + mock items
-            "pending_items": len(stored_items) + 3,
-            "in_progress_items": 2,
-            "completed_items": 0,
-            "avg_priority_score": 0.85,
-            "avg_confidence": 0.7,
-            "uploaded_items": len(stored_items)
+            "total": total_items,
+            "total_items": total_items,
+            "pending_items": pending_items,
+            "in_progress_items": in_review_items,
+            "completed_items": completed_items,
+            "avg_priority_score": avg_priority_score,
+            "avg_confidence": avg_confidence,
+            "uploaded_items": len(stored_items),
+            "items": all_items,
         }
 
     async def _websocket_handler(websocket: WebSocket, user_id: str):
