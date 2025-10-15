@@ -114,32 +114,35 @@ try:
     if not database_url:
         logger.error("❌ DATABASE_URL environment variable not found!")
         logger.error("❌ Please add PostgreSQL database to Railway and set DATABASE_URL")
-        sys.exit(1)
-    
-    # Fix Railway's postgres:// URL to postgresql://
-    if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
-    
-    logger.info(f"🔗 Connecting to database: {database_url[:50]}...")
-    
-    try:
-        engine = create_engine(database_url)
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-        
-        # Test connection
-        with engine.connect() as conn:
-            result = conn.execute(text("SELECT 1"))
-            logger.info("✅ Database connection successful")
-        
-        # Create tables if they don't exist
-        Base.metadata.create_all(bind=engine)
-        logger.info("✅ Database tables created/verified")
-        
-    except Exception as e:
-        logger.error(f"❌ Database connection failed: {e}")
-        logger.error("❌ Falling back to in-memory storage")
+        logger.warning("⚠️ Continuing with fallback storage mode...")
         engine = None
         SessionLocal = None
+    else:
+    
+        # Fix Railway's postgres:// URL to postgresql://
+        if database_url.startswith("postgres://"):
+            database_url = database_url.replace("postgres://", "postgresql://", 1)
+        
+        logger.info(f"🔗 Connecting to database: {database_url[:50]}...")
+        
+        try:
+            engine = create_engine(database_url)
+            SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+            
+            # Test connection
+            with engine.connect() as conn:
+                result = conn.execute(text("SELECT 1"))
+                logger.info("✅ Database connection successful")
+            
+            # Create tables if they don't exist
+            Base.metadata.create_all(bind=engine)
+            logger.info("✅ Database tables created/verified")
+            
+        except Exception as e:
+            logger.error(f"❌ Database connection failed: {e}")
+            logger.error("❌ Falling back to in-memory storage")
+            engine = None
+            SessionLocal = None
     
     def load_storage():
         """Load documents and triage items from database"""
