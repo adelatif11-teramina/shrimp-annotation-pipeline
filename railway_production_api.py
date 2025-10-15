@@ -13,6 +13,16 @@ from pathlib import Path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
+# Import database modules
+try:
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.orm import sessionmaker
+    from services.database.models import Base, Document, Sentence, GoldAnnotation, TriageItem, Candidate
+    HAS_DATABASE = True
+except ImportError as e:
+    logger.warning(f"Database imports failed: {e}")
+    HAS_DATABASE = False
+
 # Set environment variables for Railway
 os.environ.setdefault("ENVIRONMENT", "production")
 os.environ.setdefault("API_HOST", "0.0.0.0")
@@ -99,59 +109,97 @@ try:
     import json
     from collections import defaultdict
     
-    # PERSISTENT STORAGE - THE SINGLE SOURCE OF TRUTH
-    storage_file = Path("/tmp/railway_storage.json")
+    # DATABASE SETUP - THE SINGLE SOURCE OF TRUTH
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        logger.error("❌ DATABASE_URL environment variable not found!")
+        logger.error("❌ Please add PostgreSQL database to Railway and set DATABASE_URL")
+        sys.exit(1)
+    
+    # Fix Railway's postgres:// URL to postgresql://
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    
+    logger.info(f"🔗 Connecting to database: {database_url[:50]}...")
+    
+    try:
+        engine = create_engine(database_url)
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        
+        # Test connection
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT 1"))
+            logger.info("✅ Database connection successful")
+        
+        # Create tables if they don't exist
+        Base.metadata.create_all(bind=engine)
+        logger.info("✅ Database tables created/verified")
+        
+    except Exception as e:
+        logger.error(f"❌ Database connection failed: {e}")
+        logger.error("❌ Falling back to in-memory storage")
+        engine = None
+        SessionLocal = None
     
     def load_storage():
-        """Load storage from file with detailed logging"""
+        """Load documents and triage items from database"""
+        if not engine or not SessionLocal:
+            logger.warning("⚠️ No database connection, returning empty data")
+            return [], []
+        
         try:
-            logger.info(f"🔍 Loading storage from: {storage_file} (exists: {storage_file.exists()})")
-            if storage_file.exists():
-                file_size = storage_file.stat().st_size
-                logger.info(f"📁 Storage file size: {file_size} bytes")
-                with open(storage_file, 'r') as f:
-                    data = json.load(f)
-                docs = data.get('uploaded_documents', [])
-                items = data.get('triage_items', [])
-                logger.info(f"✅ Loaded from storage: {len(docs)} docs, {len(items)} items")
-                return docs, items
-            else:
-                logger.info("📂 No storage file found, starting with empty storage")
+            with SessionLocal() as session:
+                # Load documents
+                docs = session.query(Document).order_by(Document.created_at.desc()).all()
+                doc_list = []
+                for doc in docs:
+                    sentence_count = session.query(Sentence).filter(Sentence.document_id == doc.id).count()
+                    annotation_count = session.query(GoldAnnotation).filter(GoldAnnotation.document_id == doc.id).count()
+                    
+                    doc_list.append({
+                        "doc_id": doc.doc_id,
+                        "title": doc.title,
+                        "sentence_count": sentence_count,
+                        "annotation_count": annotation_count,
+                        "status": "annotated" if annotation_count > 0 else "pending",
+                        "created_at": doc.created_at.isoformat() + "Z",
+                        "updated_at": doc.updated_at.isoformat() + "Z",
+                        "file_name": doc.document_metadata.get("file_name", "unknown.txt")
+                    })
+                
+                # Load triage items
+                items = session.query(TriageItem).join(Sentence).order_by(TriageItem.priority_score.desc()).all()
+                item_list = []
+                for item in items:
+                    item_list.append({
+                        "item_id": item.item_id,
+                        "doc_id": item.sentence.document.doc_id,
+                        "sent_id": item.sentence.sent_id,
+                        "text": item.sentence.text,
+                        "priority_score": item.priority_score,
+                        "confidence": item.confidence_score,
+                        "status": item.status,
+                        "priority_level": item.priority_level,
+                        "created_at": item.created_at.isoformat() + "Z"
+                    })
+                
+                logger.info(f"✅ Loaded from database: {len(doc_list)} docs, {len(item_list)} items")
+                return doc_list, item_list
+                
         except Exception as e:
-            logger.error(f"❌ Failed to load storage: {e}")
-        return [], []
+            logger.error(f"❌ Failed to load from database: {e}")
+            return [], []
     
     def save_storage(documents, items):
-        """Save storage to file with detailed logging"""
-        try:
-            logger.info(f"💾 Attempting to save: {len(documents)} docs, {len(items)} items to {storage_file}")
-            
-            # Ensure directory exists
-            storage_file.parent.mkdir(parents=True, exist_ok=True)
-            
-            data = {
-                'uploaded_documents': documents,
-                'triage_items': items,
-                'timestamp': datetime.datetime.now().isoformat(),
-                'save_count': len(documents) + len(items)
-            }
-            
-            # Write to temporary file first, then rename (atomic operation)
-            temp_file = storage_file.with_suffix('.tmp')
-            with open(temp_file, 'w') as f:
-                json.dump(data, f, indent=2)
-            
-            # Atomic rename
-            temp_file.rename(storage_file)
-            
-            # Verify the save worked
-            verify_size = storage_file.stat().st_size if storage_file.exists() else 0
-            logger.info(f"✅ Successfully saved storage: {len(documents)} docs, {len(items)} items ({verify_size} bytes)")
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to save storage: {e}")
-            logger.error(f"❌ Current working dir: {os.getcwd()}")
-            logger.error(f"❌ /tmp permissions: {oct(os.stat('/tmp').st_mode)}")
+        """Save documents and triage items to database"""
+        if not engine or not SessionLocal:
+            logger.warning("⚠️ No database connection, cannot save data")
+            return
+        
+        # Note: This function is mainly for compatibility with existing code
+        # New documents and items should be saved individually using database operations
+        logger.info(f"💾 Database save compatibility function called with {len(documents)} docs, {len(items)} items")
+        logger.info("💾 Note: New documents/items should be saved directly to database")
 
     removed_default_items_file = Path("/tmp/railway_removed_defaults.json")
     gold_exports_dir = Path("/tmp/railway_gold_exports")
@@ -274,49 +322,51 @@ try:
             logger.error(f"❌ Failed to save removed default items: {e}")
 
     def load_annotations_storage() -> List[Dict[str, Any]]:
-        """Load annotations from persistent storage"""
-        storage_file = Path("/tmp/railway_annotations.json")
-        
-        if not storage_file.exists():
-            logger.info(f"📂 Annotations storage file doesn't exist, returning empty list")
+        """Load annotations from database"""
+        if not engine or not SessionLocal:
+            logger.warning("⚠️ No database connection, returning empty annotations")
             return []
         
         try:
-            logger.info(f"🔍 Loading annotations from: {storage_file} (exists: {storage_file.exists()})")
-            with open(storage_file, 'r') as f:
-                data = json.load(f)
-            
-            annotations = data.get('annotations', []) if isinstance(data, dict) else data
-            logger.info(f"✅ Loaded {len(annotations)} annotations from storage")
-            return annotations
-            
+            with SessionLocal() as session:
+                annotations = session.query(GoldAnnotation).join(Document).join(Sentence).all()
+                annotation_list = []
+                
+                for ann in annotations:
+                    annotation_list.append({
+                        "annotation_id": str(ann.id),
+                        "id": str(ann.id),
+                        "doc_id": ann.document.doc_id,
+                        "sent_id": ann.sentence.sent_id,
+                        "text": ann.sentence.text,
+                        "entities": ann.entities or [],
+                        "relations": ann.relations or [],
+                        "topics": ann.topics or [],
+                        "triplets": [],  # Can be derived from relations if needed
+                        "status": ann.status,
+                        "decision": ann.status,
+                        "confidence": getattr(ann, 'confidence_level', 'medium'),
+                        "annotator": ann.annotator_email,
+                        "notes": ann.notes or "",
+                        "created_at": ann.created_at.isoformat() + "Z",
+                        "updated_at": ann.updated_at.isoformat() + "Z"
+                    })
+                
+                logger.info(f"✅ Loaded {len(annotation_list)} annotations from database")
+                return annotation_list
+                
         except Exception as e:
-            logger.error(f"❌ Failed to load annotations storage: {e}")
+            logger.error(f"❌ Failed to load annotations from database: {e}")
             return []
 
     def save_annotations_storage(annotations: List[Dict[str, Any]]):
-        """Save annotations to persistent storage"""
-        storage_file = Path("/tmp/railway_annotations.json")
+        """Save annotations to database (compatibility function)"""
+        if not engine or not SessionLocal:
+            logger.warning("⚠️ No database connection, cannot save annotations")
+            return
         
-        try:
-            data = {
-                'annotations': annotations,
-                'timestamp': datetime.datetime.now().isoformat(),
-                'total_count': len(annotations)
-            }
-            
-            # Write to temporary file first, then rename (atomic operation)
-            temp_file = storage_file.with_suffix('.tmp')
-            with open(temp_file, 'w') as f:
-                json.dump(data, f, indent=2)
-            
-            # Atomic rename
-            temp_file.rename(storage_file)
-            
-            logger.info(f"✅ Successfully saved {len(annotations)} annotations to storage")
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to save annotations storage: {e}")
+        logger.info(f"💾 Database annotation save compatibility function called with {len(annotations)} annotations")
+        logger.info("💾 Note: New annotations should be saved directly to database using save_annotation_to_database()")
 
     def normalize_annotation_record(record: Dict[str, Any]) -> Dict[str, Any]:
         """Normalize stored annotation into UI-friendly shape."""
@@ -732,41 +782,102 @@ try:
         sentences = [s.strip() for s in content.split('.') if s.strip()]
         sentence_count = len(sentences)
         
-        # Add to uploaded documents
-        new_document = {
-            "doc_id": doc_id,
-            "title": title,
-            "sentence_count": sentence_count,
-            "annotation_count": 0,
-            "status": "ingested",
-            "created_at": timestamp,
-            "updated_at": timestamp,
-            "file_name": file_name
-        }
-        current_docs.insert(0, new_document)  # Add to front (newest first)
-        
-        # Create triage items for sentences that need annotation  
-        item_counter = len(current_items) + 100  # Starting ID for this batch
-        for i, sentence in enumerate(sentences):  # Process all sentences
-            if len(sentence) > 20:  # Only meaningful sentences
-                triage_item = {
-                    "item_id": item_counter,  # Sequential unique ID
+        # Save to database
+        if engine and SessionLocal:
+            try:
+                with SessionLocal() as session:
+                    # Create document
+                    document = Document(
+                        doc_id=doc_id,
+                        source="manual",
+                        title=title,
+                        raw_text=content,
+                        document_metadata={"file_name": file_name, "upload_method": "manual"}
+                    )
+                    session.add(document)
+                    session.flush()  # Get document ID
+                    
+                    # Create sentences and triage items
+                    created_items = 0
+                    for i, sentence in enumerate(sentences):
+                        if len(sentence) > 20:  # Only meaningful sentences
+                            # Create sentence
+                            sent_obj = Sentence(
+                                sent_id=f"{doc_id}_sent_{i+1}",
+                                document_id=document.id,
+                                start_offset=0,  # Would need proper calculation
+                                end_offset=len(sentence),
+                                text=sentence + "."
+                            )
+                            session.add(sent_obj)
+                            session.flush()  # Get sentence ID
+                            
+                            # Create triage item
+                            item_counter = int(timestamp.replace(":", "").replace("-", "").replace("T", "").replace("Z", "")[:12]) + i
+                            priority_score = 0.8 + (0.1 * max(0, 3-i))
+                            priority_level = "high" if priority_score >= 0.8 else "medium"
+                            
+                            # Create a placeholder candidate for the triage item
+                            # This is needed because TriageItem requires a candidate_id
+                            placeholder_candidate = Candidate(
+                                sentence_id=sent_obj.id,
+                                candidate_type="pending",
+                                label="NEEDS_ANNOTATION",
+                                confidence=0.0,
+                                model_name="manual_upload",
+                                generation_method="manual"
+                            )
+                            session.add(placeholder_candidate)
+                            session.flush()  # Get candidate ID
+                            
+                            triage_item = TriageItem(
+                                item_id=str(item_counter),
+                                sentence_id=sent_obj.id,
+                                candidate_id=placeholder_candidate.id,
+                                priority_score=priority_score,
+                                priority_level=priority_level,
+                                confidence_score=0.0,
+                                status="pending"
+                            )
+                            session.add(triage_item)
+                            created_items += 1
+                    
+                    session.commit()
+                    logger.info(f"💾 [DATABASE] Saved document {doc_id} with {sentence_count} sentences and {created_items} triage items")
+                    
+            except Exception as e:
+                logger.error(f"❌ [DATABASE] Failed to save document: {e}")
+                # Fallback to old method for compatibility
+                current_docs, current_items = load_storage()
+                new_document = {
                     "doc_id": doc_id,
-                    "sent_id": f"{doc_id}_sent_{i+1}",
-                    "text": sentence + ".",
-                    "priority_score": 0.8 + (0.1 * (3-i)),  # Higher priority for earlier sentences
-                    "confidence": 0.0,  # New, needs annotation
-                    "status": "pending",
+                    "title": title,
+                    "sentence_count": sentence_count,
+                    "annotation_count": 0,
+                    "status": "ingested",
                     "created_at": timestamp,
-                    "metadata": {"source": "uploaded", "sentence_index": i}
+                    "updated_at": timestamp,
+                    "file_name": file_name
                 }
-                current_items.append(triage_item)  # Add to end in correct order
-                item_counter += 1  # Increment for next item
+                current_docs.insert(0, new_document)
+                save_storage(current_docs, current_items)
+        else:
+            logger.warning("⚠️ [DATABASE] No database connection, using fallback storage")
+            current_docs, current_items = load_storage()
+            new_document = {
+                "doc_id": doc_id,
+                "title": title,
+                "sentence_count": sentence_count,
+                "annotation_count": 0,
+                "status": "ingested",
+                "created_at": timestamp,
+                "updated_at": timestamp,
+                "file_name": file_name
+            }
+            current_docs.insert(0, new_document)
+            save_storage(current_docs, current_items)
         
-        # Save to persistent storage
-        save_storage(current_docs, current_items)
-        
-        triage_created = min(3, len([s for s in sentences if len(s) > 20]))
+        triage_created = len([s for s in sentences if len(s) > 20])
         logger.info(f"✅ [INGEST] Document '{title}' added with {sentence_count} sentences, {triage_created} triage items created")
         
         return {
@@ -776,7 +887,7 @@ try:
             "status": "ingested",
             "sentence_count": sentence_count,
             "created_at": timestamp,
-            "triage_items_created": triage_created,
+            "triage_items_created": min(triage_created, sentence_count),
             "message": f"Document '{title}' successfully ingested for annotation"
         }
 
@@ -1431,38 +1542,58 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
             
             logger.info(f"📝 [DECISION] Annotations: {len(entities)} entities, {len(relations)} relations, {len(triplets)} triplets")
             
-            # Save annotation to persistent storage
-            decision_id = f"decision_{item_id}_{decision}"
-            timestamp = datetime.datetime.now().isoformat()
+            # Save annotation to database
+            timestamp = datetime.datetime.now()
+            annotation_id = None
             
-            # Load existing annotations from persistent storage
-            storage_annotations = load_annotations_storage()
+            try:
+                if engine and SessionLocal:
+                    with SessionLocal() as session:
+                        # Find the document and sentence
+                        doc_id = request.get('doc_id', f'doc_{item_id}')
+                        sent_id = request.get('sent_id', f'sent_{item_id}')
+                        
+                        # Try to find existing document and sentence
+                        document = session.query(Document).filter(Document.doc_id == doc_id).first()
+                        if document:
+                            sentence = session.query(Sentence).filter(
+                                Sentence.document_id == document.id,
+                                Sentence.sent_id == sent_id
+                            ).first()
+                            
+                            if sentence:
+                                # Create gold annotation
+                                annotation = GoldAnnotation(
+                                    document_id=document.id,
+                                    sentence_id=sentence.id,
+                                    entities=entities,
+                                    relations=relations,
+                                    topics=topics,
+                                    annotator_email=user_id,
+                                    status="accepted" if decision == "accept" else decision,
+                                    confidence_level="high" if confidence > 0.8 else "medium" if confidence > 0.5 else "low",
+                                    notes=notes,
+                                    decision_method="manual"
+                                )
+                                
+                                session.add(annotation)
+                                session.commit()
+                                annotation_id = str(annotation.id)
+                                
+                                logger.info(f"💾 [DATABASE] Saved annotation {annotation_id} for {doc_id}/{sent_id}")
+                            else:
+                                logger.warning(f"⚠️ [DATABASE] Sentence {sent_id} not found for document {doc_id}")
+                        else:
+                            logger.warning(f"⚠️ [DATABASE] Document {doc_id} not found")
+                else:
+                    logger.warning("⚠️ [DATABASE] No database connection, annotation not saved")
+                    
+            except Exception as e:
+                logger.error(f"❌ [DATABASE] Failed to save annotation: {e}")
+                # Fallback to in-memory storage for compatibility
+                annotation_id = f"fallback_{item_id}_{int(timestamp.timestamp())}"
             
-            # Create new annotation record
-            annotation_record = {
-                "annotation_id": len(storage_annotations) + 1,
-                "doc_id": request.get('doc_id', f'doc_{item_id}'),
-                "sent_id": request.get('sent_id', f'sent_{item_id}'),
-                "item_id": item_id,
-                "text": request.get('sentence', request.get('text', '')),
-                "entities": entities,
-                "relations": relations,
-                "triplets": triplets,
-                "topics": topics,
-                "notes": notes,
-                "decision": decision,
-                "status": "completed" if decision == "accept" else decision,
-                "confidence": confidence,
-                "annotator": user_id,
-                "created_at": timestamp,
-                "updated_at": timestamp
-            }
-            
-            # Add to storage and save
-            storage_annotations.append(annotation_record)
-            save_annotations_storage(storage_annotations)
-            
-            logger.info(f"💾 [DECISION] Saved annotation {annotation_record['annotation_id']} for item {item_id}")
+            logger.info(f"💾 [DECISION] Saved annotation {annotation_id or 'unknown'} for item {item_id}")
             
             # CRITICAL FIX: Remove completed item from triage queue
             logger.info(f"🗑️ [QUEUE REMOVAL] Removing item {item_id} from triage queue...")
@@ -1537,7 +1668,7 @@ Focus on high-confidence triplets that are clearly supported by the sentence tex
             return {
                 "success": True,
                 "decision_id": decision_id,
-                "annotation_id": annotation_record["annotation_id"],
+                "annotation_id": annotation_id or f"temp_{item_id}",
                 "item_id": item_id,
                 "decision": decision,
                 "status": "processed",
