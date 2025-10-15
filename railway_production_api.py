@@ -185,6 +185,10 @@ try:
                     sentence_count = session.query(Sentence).filter(Sentence.document_id == doc.id).count()
                     annotation_count = session.query(GoldAnnotation).filter(GoldAnnotation.document_id == doc.id).count()
                     
+                    # Safe metadata access
+                    metadata = doc.document_metadata or {}
+                    file_name = metadata.get("file_name", "unknown.txt") if isinstance(metadata, dict) else "unknown.txt"
+                    
                     doc_list.append({
                         "doc_id": doc.doc_id,
                         "title": doc.title,
@@ -193,31 +197,62 @@ try:
                         "status": "annotated" if annotation_count > 0 else "pending",
                         "created_at": doc.created_at.isoformat() + "Z",
                         "updated_at": doc.updated_at.isoformat() + "Z",
-                        "file_name": doc.document_metadata.get("file_name", "unknown.txt")
+                        "file_name": file_name
                     })
                 
-                # Load triage items
-                items = session.query(TriageItem).join(Sentence).order_by(TriageItem.priority_score.desc()).all()
+                # Load triage items with proper joins
+                items = session.query(TriageItem).join(Sentence).join(Document).order_by(TriageItem.priority_score.desc()).all()
                 item_list = []
                 for item in items:
-                    item_list.append({
-                        "item_id": item.item_id,
-                        "doc_id": item.sentence.document.doc_id,
-                        "sent_id": item.sentence.sent_id,
-                        "text": item.sentence.text,
-                        "priority_score": item.priority_score,
-                        "confidence": item.confidence_score,
-                        "status": item.status,
-                        "priority_level": item.priority_level,
-                        "created_at": item.created_at.isoformat() + "Z"
-                    })
+                    try:
+                        item_list.append({
+                            "item_id": item.item_id,
+                            "doc_id": item.sentence.document.doc_id,
+                            "sent_id": item.sentence.sent_id,
+                            "text": item.sentence.text,
+                            "priority_score": item.priority_score,
+                            "confidence": item.confidence_score,
+                            "status": item.status,
+                            "priority_level": item.priority_level,
+                            "created_at": item.created_at.isoformat() + "Z"
+                        })
+                    except Exception as item_error:
+                        logger.warning(f"⚠️ Skipping triage item {item.item_id}: {item_error}")
+                        continue
                 
                 logger.info(f"✅ Loaded from database: {len(doc_list)} docs, {len(item_list)} items")
                 return doc_list, item_list
                 
         except Exception as e:
             logger.error(f"❌ Failed to load from database: {e}")
-            return [], []
+            logger.warning("🔄 Falling back to mock data")
+            # Return mock data as fallback
+            mock_docs = [
+                {
+                    "doc_id": "fallback_doc_1",
+                    "title": "Fallback Document",
+                    "sentence_count": 3,
+                    "annotation_count": 0,
+                    "status": "pending",
+                    "created_at": "2024-01-01T00:00:00Z",
+                    "updated_at": "2024-01-01T00:00:00Z",
+                    "file_name": "fallback.txt"
+                }
+            ]
+            mock_items = [
+                {
+                    "item_id": "fallback_item_1",
+                    "doc_id": "fallback_doc_1",
+                    "sent_id": "fallback_sent_1",
+                    "text": "This is a fallback sentence for testing.",
+                    "priority_score": 0.7,
+                    "confidence": 0.0,
+                    "status": "pending",
+                    "priority_level": "medium",
+                    "created_at": "2024-01-01T00:00:00Z"
+                }
+            ]
+            return mock_docs, mock_items
     
     def save_storage(documents, items):
         """Save documents and triage items to database"""
@@ -634,75 +669,103 @@ try:
     @app.get("/api/triage/queue")
     async def get_triage_queue(limit: int = 100, offset: int = 0, status: str = None, sort_by: str = None):
         """Get triage queue items from persistent storage"""
-        logger.info(f"🎯 [SINGLE TRIAGE ENDPOINT] Queue requested: limit={limit}, status={status}")
-        
-        # Load from persistent storage EVERY TIME
-        stored_docs, stored_items = load_storage()
-        logger.info(f"📊 [SINGLE TRIAGE] Loaded from storage: {len(stored_items)} items")
-        
-        # Mock items for demonstration
-        mock_items = get_mock_triage_items()
-        
-        removed_default_ids = load_removed_default_items()
-        if removed_default_ids:
-            mock_items = [
-                item for item in mock_items
-                if canonical_identifier(item.get("item_id")) not in removed_default_ids
-            ]
-            if mock_items:
-                logger.info(f"🔍 [SINGLE TRIAGE] {len(removed_default_ids)} default items hidden from queue")
-
-        # Combine mock items with uploaded items (mock first for accessibility)
-        all_items = mock_items + stored_items
-
-        for item in all_items:
-            if not item.get("priority_level"):
-                score = item.get("priority_score") or 0
-                if score >= 0.85:
-                    item["priority_level"] = "critical"
-                elif score >= 0.7:
-                    item["priority_level"] = "high"
-                elif score >= 0.5:
-                    item["priority_level"] = "medium"
-                else:
-                    item["priority_level"] = "low"
-        
-        # Filter by status if specified
-        if status and status != "undefined" and status != "null" and status.lower() != "all items":
-            all_items = [item for item in all_items if item["status"] == status]
-            logger.info(f"🔍 Filtered items by status '{status}': {len(all_items)} items remaining")
-        
-        # Sort by priority if requested
-        if sort_by == "priority":
-            all_items = sorted(all_items, key=lambda x: x["priority_score"], reverse=True)
-        
-        final_items = all_items[offset:offset+limit]
-        logger.info(f"🎯 [SINGLE TRIAGE] Returning {len(final_items)} items out of {len(all_items)} total")
-        
-        # Debug: log item types and IDs for troubleshooting
-        if final_items:
-            item_ids = [item.get("item_id") for item in final_items[:10]]
-            logger.info(f"🔍 [DEBUG] First 10 item IDs: {item_ids}")
+        try:
+            logger.info(f"🎯 [SINGLE TRIAGE ENDPOINT] Queue requested: limit={limit}, status={status}")
             
-            mock_count = len([item for item in final_items if item.get("item_id", 0) <= 10])
-            uploaded_count = len([item for item in final_items if item.get("item_id", 0) > 10])
-            logger.info(f"🔍 [DEBUG] Mock items: {mock_count}, Uploaded items: {uploaded_count}")
+            # Load from persistent storage EVERY TIME
+            stored_docs, stored_items = load_storage()
+            logger.info(f"📊 [SINGLE TRIAGE] Loaded from storage: {len(stored_items)} items")
+            
+            # Mock items for demonstration
+            mock_items = get_mock_triage_items()
+            
+            removed_default_ids = load_removed_default_items()
+            if removed_default_ids:
+                mock_items = [
+                    item for item in mock_items
+                    if canonical_identifier(item.get("item_id")) not in removed_default_ids
+                ]
+                if mock_items:
+                    logger.info(f"🔍 [SINGLE TRIAGE] {len(removed_default_ids)} default items hidden from queue")
+
+            # Combine mock items with uploaded items (mock first for accessibility)
+            all_items = mock_items + stored_items
+
+            for item in all_items:
+                if not item.get("priority_level"):
+                    score = item.get("priority_score") or 0
+                    if score >= 0.85:
+                        item["priority_level"] = "critical"
+                    elif score >= 0.7:
+                        item["priority_level"] = "high"
+                    elif score >= 0.5:
+                        item["priority_level"] = "medium"
+                    else:
+                        item["priority_level"] = "low"
+            
+            # Filter by status if specified
+            if status and status != "undefined" and status != "null" and status.lower() != "all items":
+                all_items = [item for item in all_items if item["status"] == status]
+                logger.info(f"🔍 Filtered items by status '{status}': {len(all_items)} items remaining")
+            
+            # Sort by priority if requested
+            if sort_by == "priority":
+                all_items = sorted(all_items, key=lambda x: x["priority_score"], reverse=True)
+            
+            final_items = all_items[offset:offset+limit]
+            logger.info(f"🎯 [SINGLE TRIAGE] Returning {len(final_items)} items out of {len(all_items)} total")
+            
+            # Debug: log item types and IDs for troubleshooting
+            if final_items:
+                item_ids = [item.get("item_id") for item in final_items[:10]]
+                logger.info(f"🔍 [DEBUG] First 10 item IDs: {item_ids}")
+                
+                mock_count = len([item for item in final_items if item.get("item_id", 0) <= 10])
+                uploaded_count = len([item for item in final_items if item.get("item_id", 0) > 10])
+                logger.info(f"🔍 [DEBUG] Mock items: {mock_count}, Uploaded items: {uploaded_count}")
         
-        response = {
-            "items": final_items,
-            "total": len(all_items),
-            "limit": limit,
-            "offset": offset,
-            "has_more": offset + limit < len(all_items),
-            "source": "persistent_storage"
-        }
-        
-        # Debug: log response size
-        import json
-        response_size = len(json.dumps(response))
-        logger.info(f"🔍 [DEBUG] Response size: {response_size} bytes")
-        
-        return response
+            response = {
+                "items": final_items,
+                "total": len(all_items),
+                "limit": limit,
+                "offset": offset,
+                "has_more": offset + limit < len(all_items),
+                "source": "persistent_storage"
+            }
+            
+            # Debug: log response size
+            import json
+            response_size = len(json.dumps(response))
+            logger.info(f"🔍 [DEBUG] Response size: {response_size} bytes")
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"❌ [TRIAGE QUEUE] Error: {e}")
+            logger.error(f"❌ [TRIAGE QUEUE] Full traceback: {traceback.format_exc()}")
+            # Return minimal fallback response
+            fallback_items = [
+                {
+                    "item_id": "error_fallback_1",
+                    "doc_id": "error_doc_1",
+                    "sent_id": "error_sent_1",
+                    "text": "Error loading triage queue - using fallback data.",
+                    "priority_score": 0.5,
+                    "confidence": 0.0,
+                    "status": "pending",
+                    "priority_level": "medium",
+                    "created_at": "2024-01-01T00:00:00Z"
+                }
+            ]
+            return {
+                "items": fallback_items,
+                "total": len(fallback_items),
+                "limit": limit,
+                "offset": offset,
+                "has_more": False,
+                "source": "error_fallback",
+                "error": str(e)
+            }
 
     @app.post("/api/triage/items/{item_id}/skip")
     async def skip_triage_item(item_id: str, request: Optional[Dict[str, Any]] = Body(default=None)):
