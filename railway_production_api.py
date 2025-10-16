@@ -1750,6 +1750,7 @@ async def decide_annotation(request: Dict[str, Any]):
         # Save annotation to database
         timestamp = datetime.datetime.now()
         annotation_id = None
+        decision_id = f"decision_{item_id}_{int(timestamp.timestamp())}"
         
         try:
             if engine and SessionLocal:
