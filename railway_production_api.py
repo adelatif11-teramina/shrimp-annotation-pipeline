@@ -306,7 +306,15 @@ def load_storage():
                 })
             
             # Load triage items with proper joins
-            items = session.query(TriageItem).join(Sentence).join(Document).order_by(TriageItem.priority_score.desc()).all()
+            active_statuses = ["pending", "in_review"]
+            items = (
+                session.query(TriageItem)
+                .join(Sentence)
+                .join(Document)
+                .filter(TriageItem.status.in_(active_statuses))
+                .order_by(TriageItem.priority_score.desc())
+                .all()
+            )
             item_list = []
             for item in items:
                 try:
@@ -360,15 +368,88 @@ def load_storage():
         return mock_docs, mock_items
 
 def save_storage(documents, items):
-    """Save documents and triage items to database"""
-    if not engine or not SessionLocal:
-        logger.warning("⚠️ No database connection, cannot save data")
+    """Persist queue state to the active storage backend."""
+    if engine and SessionLocal:
+        logger.info(
+            "💾 [DATABASE] save_storage called with %s documents and %s items (noop)",
+            len(documents),
+            len(items),
+        )
+        logger.info("💾 [DATABASE] Direct database writes handle persistence; no bulk save performed")
         return
-    
-    # Note: This function is mainly for compatibility with existing code
-    # New documents and items should be saved individually using database operations
-    logger.info(f"💾 Database save compatibility function called with {len(documents)} docs, {len(items)} items")
-    logger.info("💾 Note: New documents/items should be saved directly to database")
+
+    logger.info(
+        "💾 [FALLBACK] Persisting %s documents and %s items to fallback storage",
+        len(documents),
+        len(items),
+    )
+    save_fallback_storage(documents, items)
+
+
+def mark_triage_item_completed_in_db(
+    queue_item: Dict[str, Any],
+    decision: str,
+    user_id: str,
+    timestamp: datetime.datetime,
+) -> bool:
+    """Update the database triage record to reflect completion."""
+    if not engine or not SessionLocal:
+        return False
+
+    item_identifier = queue_item.get("item_id")
+    doc_identifier = queue_item.get("doc_id")
+    sent_identifier = queue_item.get("sent_id")
+
+    try:
+        with SessionLocal() as session:
+            triage_obj = None
+
+            if item_identifier is not None:
+                triage_obj = (
+                    session.query(TriageItem)
+                    .filter(TriageItem.item_id == str(item_identifier))
+                    .one_or_none()
+                )
+
+            if not triage_obj and doc_identifier and sent_identifier:
+                triage_obj = (
+                    session.query(TriageItem)
+                    .join(Sentence)
+                    .join(Document)
+                    .filter(
+                        Document.doc_id == doc_identifier,
+                        Sentence.sent_id == sent_identifier,
+                    )
+                    .order_by(TriageItem.created_at.desc())
+                    .first()
+                )
+
+            if not triage_obj:
+                logger.warning(
+                    "⚠️ [DATABASE] Unable to locate triage item for item_id=%s doc_id=%s sent_id=%s",
+                    item_identifier,
+                    doc_identifier,
+                    sent_identifier,
+                )
+                return False
+
+            triage_obj.status = "completed" if decision == "accept" else decision
+            triage_obj.completed_at = timestamp
+            triage_obj.assigned_to = user_id
+            triage_obj.updated_at = timestamp
+            session.commit()
+
+            logger.info(
+                "✅ [DATABASE] Marked triage item %s as %s",
+                triage_obj.item_id,
+                triage_obj.status,
+            )
+            return True
+
+    except Exception as exc:
+        logger.error(f"❌ [DATABASE] Failed to update triage item: {exc}")
+
+    return False
 
 removed_default_items_file = Path("/tmp/railway_removed_defaults.json")
 gold_exports_dir = Path("/tmp/railway_gold_exports")
@@ -1825,6 +1906,7 @@ async def decide_annotation(request: Dict[str, Any]):
             items_before = len(stored_items)
             filtered_items = []
             removed_from_storage = False
+            matched_queue_item: Optional[Dict[str, Any]] = None
 
             for queued_item in stored_items:
                 queue_forms: Set[str] = set()
@@ -1838,6 +1920,7 @@ async def decide_annotation(request: Dict[str, Any]):
 
                 if queue_forms & target_forms:
                     removed_from_storage = True
+                    matched_queue_item = queued_item
                     logger.info(
                         "✅ [QUEUE REMOVAL] Matched stored item %s via identifiers %s",
                         queued_item.get("item_id"),
@@ -1851,9 +1934,28 @@ async def decide_annotation(request: Dict[str, Any]):
             items_after = len(stored_items)
 
             if removed_from_storage:
-                # Save updated queue back to storage
-                save_storage(stored_docs, stored_items)
-                logger.info(f"✅ [QUEUE REMOVAL] Successfully removed item {item_id} from queue ({items_before} → {items_after} items)")
+                logger.info(
+                    "✅ [QUEUE REMOVAL] Successfully removed item %s from queue (%s → %s items)",
+                    item_id,
+                    items_before,
+                    items_after,
+                )
+
+                if engine and SessionLocal and matched_queue_item:
+                    updated = mark_triage_item_completed_in_db(
+                        matched_queue_item,
+                        decision,
+                        user_id,
+                        timestamp,
+                    )
+                    if not updated:
+                        logger.warning(
+                            "⚠️ [QUEUE REMOVAL] Database triage item update failed for %s",
+                            item_id,
+                        )
+                else:
+                    # Persist fallback queue to disk
+                    save_storage(stored_docs, stored_items)
             else:
                 logger.warning(f"⚠️ [QUEUE REMOVAL] Item {item_id} not found in stored queue (already removed or alternate ID)")
                 canonical_target = canonical_identifier(item_id)
