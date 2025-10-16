@@ -12,6 +12,7 @@ import logging
 import mimetypes
 import re
 import traceback
+import uuid
 from pathlib import Path
 
 # Add the project root to Python path
@@ -1219,12 +1220,11 @@ async def ingest_document(request: Dict[str, Any]):
     }
     if metadata:
         document_metadata["user_metadata"] = dict(metadata)
+    if request.get('doc_id'):
+        document_metadata["original_doc_id"] = request.get('doc_id')
 
-    # Load current storage
-    current_docs, current_items = load_storage()
-    
     # Create unique document ID
-    doc_id = f"uploaded_{len(current_docs) + 1}"
+    doc_id = f"uploaded_{uuid.uuid4().hex[:12]}"
     timestamp = datetime.datetime.now().isoformat() + "Z"
     
     # Split content into sentences for processing
