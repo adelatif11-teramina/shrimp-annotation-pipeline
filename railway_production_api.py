@@ -159,6 +159,7 @@ else:
     
 # FALLBACK FILE-BASED STORAGE (PERSISTENT ACROSS REQUESTS)
 fallback_storage_file = Path("/tmp/railway_fallback_storage.json")
+annotations_fallback_file = Path("/tmp/railway_annotations_fallback.json")
 
 def load_fallback_storage():
     """Load fallback storage from persistent file"""
@@ -193,6 +194,58 @@ def save_fallback_storage(documents, triage_items):
         logger.info(f"💾 [FALLBACK] Saved {len(documents)} docs, {len(triage_items)} items to file")
     except Exception as e:
         logger.error(f"❌ [FALLBACK] Failed to save storage: {e}")
+
+def load_annotations_fallback() -> List[Dict[str, Any]]:
+    """Load annotation records from persistent fallback storage."""
+    try:
+        if annotations_fallback_file.exists():
+            with open(annotations_fallback_file, 'r') as f:
+                data = json.load(f)
+            annotations = data.get('annotations', [])
+            logger.info(
+                "📄 [FALLBACK] Loaded %s annotation records from file",
+                len(annotations),
+            )
+            return annotations
+    except Exception as exc:
+        logger.error(f"❌ [FALLBACK] Failed to load annotations storage: {exc}")
+    return []
+
+
+def save_annotations_fallback(records: List[Dict[str, Any]]):
+    """Persist annotation records to fallback storage."""
+    try:
+        payload = {
+            'annotations': records,
+            'timestamp': datetime.datetime.now().isoformat(),
+            'total_count': len(records)
+        }
+        temp_file = annotations_fallback_file.with_suffix('.tmp')
+        with open(temp_file, 'w') as f:
+            json.dump(payload, f, indent=2)
+        temp_file.rename(annotations_fallback_file)
+        logger.info("💾 [FALLBACK] Saved %s annotation records to file", len(records))
+    except Exception as exc:
+        logger.error(f"❌ [FALLBACK] Failed to save annotations storage: {exc}")
+
+
+def append_annotation_fallback(record: Dict[str, Any]):
+    """Append or replace an annotation record in fallback storage."""
+    if not record:
+        return
+
+    records = load_annotations_fallback()
+    annotation_id = record.get('annotation_id') or record.get('id')
+    if annotation_id:
+        records = [r for r in records if (r.get('annotation_id') or r.get('id')) != annotation_id]
+
+    records.insert(0, record)
+
+    if len(records) > 500:
+        records = records[:500]
+
+    save_annotations_fallback(records)
+
 
 def guess_mime_type(file_name: Optional[str], provided_type: Optional[str]) -> Optional[str]:
     """Return the best-effort MIME type for the uploaded payload."""
@@ -675,16 +728,24 @@ def save_removed_default_items(ids: Set[str]) -> None:
         logger.error(f"❌ Failed to save removed default items: {e}")
 
 def load_annotations_storage() -> List[Dict[str, Any]]:
-    """Load annotations from database"""
+    """Load annotations from database or fallback storage."""
+    fallback_records = load_annotations_fallback()
+
     if not engine or not SessionLocal:
+        if fallback_records:
+            logger.warning(
+                "⚠️ No database connection, returning %s fallback annotations",
+                len(fallback_records),
+            )
+            return fallback_records
         logger.warning("⚠️ No database connection, returning empty annotations")
         return []
-    
+
     try:
         with SessionLocal() as session:
             annotations = session.query(GoldAnnotation).join(Document).join(Sentence).all()
             annotation_list = []
-            
+
             for ann in annotations:
                 annotation_list.append({
                     "annotation_id": str(ann.id),
@@ -704,12 +765,35 @@ def load_annotations_storage() -> List[Dict[str, Any]]:
                     "created_at": ann.created_at.isoformat() + "Z",
                     "updated_at": ann.updated_at.isoformat() + "Z"
                 })
-            
+
+            if fallback_records:
+                existing_ids = {
+                    record.get("annotation_id") or record.get("id")
+                    for record in annotation_list
+                }
+                merged = annotation_list[:]
+                for record in fallback_records:
+                    record_id = record.get("annotation_id") or record.get("id")
+                    if record_id not in existing_ids:
+                        merged.append(record)
+                logger.info(
+                    "✅ Loaded %s annotations from database (+%s fallback)",
+                    len(annotation_list),
+                    len(merged) - len(annotation_list),
+                )
+                return merged
+
             logger.info(f"✅ Loaded {len(annotation_list)} annotations from database")
             return annotation_list
-            
+
     except Exception as e:
         logger.error(f"❌ Failed to load annotations from database: {e}")
+        if fallback_records:
+            logger.warning(
+                "⚠️ Returning fallback annotations due to database error (%s items)",
+                len(fallback_records),
+            )
+            return fallback_records
         return []
 
 def save_annotations_storage(annotations: List[Dict[str, Any]]):
@@ -1993,21 +2077,21 @@ async def decide_annotation(request: Dict[str, Any]):
         topics = request.get('topics', [])
         triplets = request.get('triplets', [])
         notes = request.get('notes', '')
-        
+
         logger.info(f"📝 [DECISION] Annotations: {len(entities)} entities, {len(relations)} relations, {len(triplets)} triplets")
-        
+
         # Save annotation to database
         timestamp = datetime.datetime.now()
         annotation_id = None
         decision_id = f"decision_{item_id}_{int(timestamp.timestamp())}"
-        
+        persisted_to_db = False
+
+        doc_id = request.get('doc_id', f'doc_{item_id}')
+        sent_id = request.get('sent_id', f'sent_{item_id}')
+
         try:
             if engine and SessionLocal:
                 with SessionLocal() as session:
-                    # Find the document and sentence
-                    doc_id = request.get('doc_id', f'doc_{item_id}')
-                    sent_id = request.get('sent_id', f'sent_{item_id}')
-                    
                     # Try to find existing document and sentence
                     document = session.query(Document).filter(Document.doc_id == doc_id).first()
                     if document:
@@ -2015,7 +2099,7 @@ async def decide_annotation(request: Dict[str, Any]):
                             Sentence.document_id == document.id,
                             Sentence.sent_id == sent_id
                         ).first()
-                        
+
                         if sentence:
                             # Create gold annotation
                             annotation = GoldAnnotation(
@@ -2030,11 +2114,12 @@ async def decide_annotation(request: Dict[str, Any]):
                                 notes=notes,
                                 decision_method="manual"
                             )
-                            
+
                             session.add(annotation)
                             session.commit()
                             annotation_id = str(annotation.id)
-                            
+                            persisted_to_db = True
+
                             logger.info(f"💾 [DATABASE] Saved annotation {annotation_id} for {doc_id}/{sent_id}")
                         else:
                             logger.warning(f"⚠️ [DATABASE] Sentence {sent_id} not found for document {doc_id}")
@@ -2042,7 +2127,7 @@ async def decide_annotation(request: Dict[str, Any]):
                         logger.warning(f"⚠️ [DATABASE] Document {doc_id} not found")
             else:
                 logger.warning("⚠️ [DATABASE] No database connection, annotation not saved")
-                
+
         except Exception as e:
             logger.error(f"❌ [DATABASE] Failed to save annotation: {e}")
             # Fallback to in-memory storage for compatibility
@@ -2141,10 +2226,59 @@ async def decide_annotation(request: Dict[str, Any]):
         except Exception as e:
             logger.error(f"❌ [QUEUE REMOVAL] Failed to remove item {item_id} from queue: {e}")
         
+        fallback_annotation_id = annotation_id
+        if not fallback_annotation_id:
+            fallback_annotation_id = f"fallback_{uuid.uuid4().hex[:12]}"
+
+        sentence_text = None
+        doc_title = None
+        if matched_queue_item:
+            sentence_text = matched_queue_item.get("text")
+            doc_title = matched_queue_item.get("doc_title")
+        if not sentence_text:
+            sentence_text = request.get('text')
+        if not sentence_text:
+            # Attempt to recover sentence text from storage
+            try:
+                _, remaining_items = load_storage()
+                for queued in remaining_items:
+                    if queued.get("doc_id") == doc_id and queued.get("sent_id") == sent_id:
+                        sentence_text = queued.get("text")
+                        doc_title = doc_title or queued.get("doc_title")
+                        break
+            except Exception:
+                pass
+
+        created_at_str = timestamp.isoformat() + "Z"
+        annotation_record = {
+            "annotation_id": fallback_annotation_id,
+            "id": fallback_annotation_id,
+            "item_id": item_id,
+            "candidate_id": request.get('candidate_id'),
+            "doc_id": doc_id,
+            "sent_id": sent_id,
+            "text": sentence_text or "",
+            "decision": decision,
+            "status": "completed" if decision == "accept" else decision,
+            "confidence": confidence,
+            "annotator": user_id,
+            "notes": notes,
+            "entities": entities,
+            "relations": relations,
+            "topics": topics,
+            "triplets": triplets,
+            "created_at": created_at_str,
+            "updated_at": created_at_str,
+            "doc_title": doc_title,
+        }
+
+        if not persisted_to_db:
+            append_annotation_fallback(annotation_record)
+
         return {
             "success": True,
             "decision_id": decision_id,
-            "annotation_id": annotation_id or f"temp_{item_id}",
+            "annotation_id": annotation_id or fallback_annotation_id,
             "item_id": item_id,
             "decision": decision,
             "status": "processed",

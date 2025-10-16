@@ -415,6 +415,10 @@ function AnnotationWorkspace() {
       confidence: confidence === 'high' ? 0.9 : confidence === 'medium' ? 0.7 : 0.5,
       notes,
       user_id: 1,
+      doc_id: currentItem.doc_id || currentItem.document_id,
+      sent_id: currentItem.sent_id || currentItem.sentence_id,
+      doc_title: currentItem.doc_title || currentItem.title || currentItem.document_title,
+      text: currentItem.text || currentItem.sentence_text,
     };
 
     try {
@@ -467,6 +471,10 @@ function AnnotationWorkspace() {
       triplets: serializeTriplets(),
       notes,
       user_id: 1,
+      doc_id: currentItem.doc_id || currentItem.document_id,
+      sent_id: currentItem.sent_id || currentItem.sentence_id,
+      doc_title: currentItem.doc_title || currentItem.title || currentItem.document_title,
+      text: currentItem.text || currentItem.sentence_text,
     };
 
     try {
@@ -502,6 +510,10 @@ function AnnotationWorkspace() {
         notes,
       },
       annotator: 'current-user@example.com',
+      doc_id: currentItem.doc_id || currentItem.document_id,
+      sent_id: currentItem.sent_id || currentItem.sentence_id,
+      doc_title: currentItem.doc_title || currentItem.title || currentItem.document_title,
+      text: currentItem.text || currentItem.sentence_text,
     };
 
     try {
