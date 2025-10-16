@@ -2136,6 +2136,24 @@ if ui_build.exists():
 else:
     logger.warning("⚠️ Frontend build directory not found")
 
+# FINAL ROUTE CLEANUP - Remove any catch-all routes that might interfere with API
+logger.info("🔧 [FINAL CLEANUP] Checking for catch-all routes after all setup...")
+final_catch_all = [r for r in app.routes if hasattr(r, 'path') and r.path == "/{full_path:path}"]
+if final_catch_all:
+    logger.warning(f"🚨 [FINAL CLEANUP] Found {len(final_catch_all)} catch-all routes - removing them")
+    original_routes = list(app.routes)
+    app.router.routes.clear()
+    
+    for route in original_routes:
+        if hasattr(route, 'path') and route.path == "/{full_path:path}":
+            logger.info(f"🗑️ [FINAL CLEANUP] Removed catch-all route: {route.path}")
+            continue
+        app.router.routes.append(route)
+    
+    logger.info(f"✅ [FINAL CLEANUP] Route cleanup complete: {len(app.routes)} routes remaining")
+else:
+    logger.info("✅ [FINAL CLEANUP] No catch-all routes found - API should work correctly")
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", "8000"))
