@@ -22,6 +22,7 @@ jsonlines>=3.1
 # Document processing (optional)
 nltk>=3.8
 # spacy>=3.5  # Optional, causes NumPy issues
+pdfminer.six>=20231228
 
 # LLM support (optional)
 requests>=2.31  # For Ollama

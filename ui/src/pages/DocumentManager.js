@@ -44,33 +44,19 @@ const readFileAsText = (file) =>
     reader.readAsText(file);
   });
 
-const extractPDFText = async (arrayBuffer) => {
-  const decoder = new TextDecoder('utf-8');
-  const text = decoder.decode(arrayBuffer);
-
-  const textContent = [];
-  const streamRegex = /stream\s*(.*?)\s*endstream/gs;
-  let match;
-
-  while ((match = streamRegex.exec(text)) !== null) {
-    const streamContent = match[1];
-    const readableText = streamContent
-      .replace(/[^\x20-\x7E\n\r]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    if (readableText.length > 10) {
-      textContent.push(readableText);
-    }
-  }
-
-  return textContent.join('\n\n').trim();
-};
+const readFileAsBase64 = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => resolve(event.target?.result || '');
+    reader.onerror = (event) => reject(event?.target?.error || new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
 
 function DocumentManager() {
   const [uploadDialog, setUploadDialog] = useState(false);
   const [newDocument, setNewDocument] = useState({ title: '', text: '', source: 'manual' });
   const [selectedFile, setSelectedFile] = useState(null);
+  const [filePayload, setFilePayload] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
 
   const queryClient = useQueryClient();
@@ -109,71 +95,104 @@ function DocumentManager() {
       return;
     }
 
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    let detectedType = file.type;
+    if (!detectedType && extension === 'pdf') {
+      detectedType = 'application/pdf';
+    } else if (!detectedType && extension === 'txt') {
+      detectedType = 'text/plain';
+    }
+
+    if (!['text/plain', 'application/pdf'].includes(detectedType)) {
+      setSelectedFile(null);
+      setFilePayload(null);
+      handleSnackbar('Only plain text or PDF files are supported.', 'warning');
+      return;
+    }
+
     setSelectedFile(file);
 
     if (!newDocument.title) {
       setNewDocument((prev) => ({ ...prev, title: file.name.replace(/\.[^/.]+$/, '') }));
     }
 
-    if (file.type === 'text/plain') {
+    try {
+      const base64 = await readFileAsBase64(file);
+      setFilePayload({
+        data: base64,
+        type: detectedType,
+        name: file.name,
+        size: file.size,
+        encoding: 'base64',
+      });
+    } catch (error) {
+      console.error('Failed to read file as base64:', error);
+      handleSnackbar('Failed to read file contents.', 'error');
+      return;
+    }
+
+    if (detectedType === 'text/plain') {
       const text = await readFileAsText(file);
       setNewDocument((prev) => ({ ...prev, text }));
       return;
     }
 
-    if (file.type === 'application/pdf') {
-      try {
-        const arrayBuffer = await file.arrayBuffer();
-        const text = await extractPDFText(arrayBuffer);
-        if (text) {
-          setNewDocument((prev) => ({ ...prev, text }));
-        } else {
-          setNewDocument((prev) => ({
-            ...prev,
-            text: `// PDF uploaded: ${file.name}\n// Please paste the extracted text here or upload a .txt file instead.`,
-          }));
-          handleSnackbar('PDF text extraction is limited. Please verify the imported content.', 'warning');
-        }
-      } catch (error) {
-        console.error('PDF extraction failed:', error);
-        handleSnackbar('Unable to extract text from PDF. Please upload a .txt file.', 'warning');
-      }
-      return;
-    }
-
-    handleSnackbar('Only plain text or PDF files are supported.', 'warning');
+    // For PDFs, rely on server-side extraction to avoid corrupted previews.
+    setNewDocument((prev) => ({ ...prev, text: prev.text || '' }));
+    handleSnackbar('PDF upload detected. Text will be extracted server-side after upload.', 'info');
   };
 
   const handleUploadDocument = async () => {
     try {
       let documentText = newDocument.text;
 
-      if (selectedFile && !documentText) {
-        if (selectedFile.type === 'text/plain') {
-          documentText = await readFileAsText(selectedFile);
-        } else {
-          handleSnackbar('Please extract text from the selected file before uploading.', 'warning');
-          return;
-        }
+      const detectedType = filePayload?.type || selectedFile?.type;
+
+      if (selectedFile && !documentText && detectedType === 'text/plain') {
+        documentText = await readFileAsText(selectedFile);
       }
 
-      if (!newDocument.title || !documentText) {
-        handleSnackbar('Title and document text are required.', 'warning');
+      if (!newDocument.title) {
+        handleSnackbar('Title is required.', 'warning');
         return;
+      }
+
+      if (!documentText && !filePayload) {
+        handleSnackbar('Provide document text or upload a supported file.', 'warning');
+        return;
+      }
+
+      const metadata = {
+        upload_method: 'document_manager_ui',
+      };
+
+      if (filePayload?.name) {
+        metadata.original_filename = filePayload.name;
+      }
+      if (filePayload?.type) {
+        metadata.file_type = filePayload.type;
+      }
+      if (filePayload?.size) {
+        metadata.file_size = filePayload.size;
       }
 
       const docData = {
         doc_id: `doc_${Date.now()}`,
         title: newDocument.title,
-        text: documentText,
         source: newDocument.source,
-        metadata: selectedFile
-          ? {
-              original_filename: selectedFile.name,
-              file_type: selectedFile.type,
-            }
-          : {},
+        metadata,
       };
+
+      if (documentText && documentText.trim()) {
+        docData.text = documentText;
+      }
+
+      if (filePayload?.data) {
+        docData.file_content = filePayload.data;
+        docData.file_type = filePayload.type;
+        docData.file_name = filePayload.name;
+        docData.file_encoding = filePayload.encoding || 'base64';
+      }
 
       await ingestMutation.mutateAsync(docData);
     } catch (error) {
@@ -186,6 +205,7 @@ function DocumentManager() {
     setUploadDialog(false);
     setNewDocument({ title: '', text: '', source: 'manual' });
     setSelectedFile(null);
+    setFilePayload(null);
   };
 
   const getStatusColor = (status) => {

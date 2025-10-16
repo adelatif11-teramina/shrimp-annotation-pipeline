@@ -3,9 +3,14 @@
 SIMPLIFIED Railway Production API - No Conflicts
 """
 
+import base64
+import binascii
 import os
 import sys
+import io
 import logging
+import mimetypes
+import re
 import traceback
 from pathlib import Path
 
@@ -35,6 +40,15 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+try:
+    from pdfminer.high_level import extract_text as pdf_extract_text
+except ImportError as pdf_import_error:
+    pdf_extract_text = None
+    logger.warning(
+        "⚠️ pdfminer.six not available (%s); PDF extraction will be disabled",
+        pdf_import_error,
+    )
 
 # Enhanced startup logging
 logger.info("🚀 Railway Production API Starting... [SIMPLIFIED VERSION - Updated OpenAI Key]")
@@ -179,7 +193,89 @@ def save_fallback_storage(documents, triage_items):
     except Exception as e:
         logger.error(f"❌ [FALLBACK] Failed to save storage: {e}")
 
-def save_document_to_fallback(doc_id, title, file_name, sentences, timestamp):
+def guess_mime_type(file_name: Optional[str], provided_type: Optional[str]) -> Optional[str]:
+    """Return the best-effort MIME type for the uploaded payload."""
+    if provided_type:
+        return provided_type
+
+    if file_name:
+        guessed_type, _ = mimetypes.guess_type(file_name)
+        if guessed_type:
+            return guessed_type
+
+    return None
+
+
+def decode_base64_payload(data: str) -> bytes:
+    """Decode base64 data URIs or raw base64 strings into bytes."""
+    if not data:
+        return b""
+
+    payload = data.strip()
+    if payload.startswith("data:") and "," in payload:
+        payload = payload.split(",", 1)[1]
+
+    try:
+        return base64.b64decode(payload, validate=True)
+    except binascii.Error:
+        logger.warning("⚠️ [UPLOAD] Base64 validation failed, attempting permissive decode")
+        return base64.b64decode(payload)
+
+
+def normalise_text(value: str) -> str:
+    """Normalise line endings and strip non-printable characters."""
+    if not value:
+        return ""
+
+    cleaned = value.replace("\r\n", "\n").replace("\r", "\n")
+    cleaned = cleaned.replace("\x00", "")
+    cleaned = re.sub(r"[\u200b\u200c\u200d\ufeff]", "", cleaned)
+    cleaned = re.sub(r"[ \t]+\n", "\n", cleaned)
+    return cleaned.strip()
+
+
+def extract_text_from_bytes(file_bytes: bytes, mime_type: Optional[str], file_name: Optional[str]) -> str:
+    """Extract readable text from uploaded bytes based on MIME type."""
+    if not file_bytes:
+        return ""
+
+    effective_mime = guess_mime_type(file_name, mime_type)
+
+    if effective_mime == "application/pdf" or (file_name or "").lower().endswith(".pdf"):
+        if pdf_extract_text is None:
+            logger.warning("⚠️ [PDF] pdfminer.six unavailable; cannot extract text")
+        else:
+            try:
+                with io.BytesIO(file_bytes) as buffer:
+                    pdf_text = pdf_extract_text(buffer)
+                return normalise_text(pdf_text)
+            except Exception as pdf_error:
+                logger.error(f"❌ [PDF] Failed to extract text: {pdf_error}")
+
+    # Default: treat as text-like content
+    for encoding in ("utf-8", "latin-1"):
+        try:
+            decoded = file_bytes.decode(encoding)
+            logger.info(f"✅ [UPLOAD] Decoded bytes using {encoding}")
+            return normalise_text(decoded)
+        except UnicodeDecodeError:
+            continue
+
+    logger.warning("⚠️ [UPLOAD] Unable to decode bytes as text")
+    return ""
+
+
+def split_into_sentences(text: str) -> List[str]:
+    """Lightweight sentence splitter for uploaded content."""
+    if not text:
+        return []
+
+    candidates = re.split(r'(?<=[.!?])\s+|\n+', text)
+    sentences = [candidate.strip() for candidate in candidates if candidate and candidate.strip()]
+    return sentences
+
+
+def save_document_to_fallback(doc_id, title, file_name, sentences, timestamp, raw_text, metadata=None):
     """Persist uploaded content to file-based fallback storage."""
     
     # Load existing data
@@ -199,6 +295,8 @@ def save_document_to_fallback(doc_id, title, file_name, sentences, timestamp):
         "updated_at": timestamp,
         "file_name": file_name,
         "source": "uploaded",
+        "raw_text": raw_text,
+        "metadata": metadata or {},
     }
     fallback_documents.insert(0, new_document)
 
@@ -212,11 +310,15 @@ def save_document_to_fallback(doc_id, title, file_name, sentences, timestamp):
             timestamp.replace(":", "").replace("-", "").replace("T", "").replace("Z", "")[:12]
         ) + i
 
+        text_value = sentence_text
+        if text_value and text_value[-1] not in ".!?":
+            text_value = f"{text_value}."
+
         triage_item = {
             "item_id": item_counter,
             "doc_id": doc_id,
             "sent_id": f"{doc_id}_sent_{i + 1}",
-            "text": sentence_text + ".",
+            "text": text_value,
             "priority_score": 0.8 + (0.1 * max(0, 3 - i)),
             "confidence": 0.0,
             "status": "pending",
@@ -1061,9 +1163,63 @@ async def ingest_document(request: Dict[str, Any]):
     
     # Extract document info
     title = request.get('title', 'Untitled Document')
-    content = request.get('content', request.get('text', ''))
-    file_name = request.get('fileName', request.get('filename', 'upload.txt'))
-    
+    metadata = request.get('metadata') if isinstance(request.get('metadata'), dict) else {}
+
+    file_name = request.get(
+        'fileName',
+        request.get('filename', metadata.get('original_filename', 'upload.pdf')),
+    )
+    file_type = request.get(
+        'file_type',
+        request.get('fileType', metadata.get('file_type')),
+    )
+
+    file_content_b64 = (
+        request.get('file_content')
+        or request.get('fileContent')
+        or metadata.get('file_base64')
+    )
+
+    file_bytes = b""
+    if file_content_b64:
+        try:
+            file_bytes = decode_base64_payload(file_content_b64)
+            logger.info(
+                "📄 [INGEST] Received file payload: %s bytes (type=%s)",
+                len(file_bytes),
+                file_type,
+            )
+        except Exception as decode_error:
+            logger.error(f"❌ [INGEST] Failed to decode file content: {decode_error}")
+            file_bytes = b""
+
+    provided_text = request.get('content') or request.get('text') or ''
+    normalised_provided_text = normalise_text(provided_text)
+
+    extracted_text = extract_text_from_bytes(file_bytes, file_type, file_name) if file_bytes else ''
+    if extracted_text:
+        logger.info("📄 [INGEST] Extracted %s characters from uploaded file", len(extracted_text))
+    elif file_bytes:
+        logger.warning("⚠️ [INGEST] No text extracted from uploaded file; falling back to provided text")
+
+    document_text = extracted_text or normalised_provided_text
+    if not document_text:
+        raise HTTPException(status_code=400, detail="No document text provided or extracted from upload")
+
+    document_text = normalise_text(document_text)
+
+    text_source = "file_extracted" if extracted_text else ("provided_text" if normalised_provided_text else "unknown")
+    file_size = len(file_bytes) if file_bytes else len(document_text.encode("utf-8"))
+    document_metadata = {
+        "file_name": file_name,
+        "file_type": file_type,
+        "file_size": file_size,
+        "upload_method": metadata.get("upload_method", "manual"),
+        "text_source": text_source,
+    }
+    if metadata:
+        document_metadata["user_metadata"] = dict(metadata)
+
     # Load current storage
     current_docs, current_items = load_storage()
     
@@ -1072,8 +1228,11 @@ async def ingest_document(request: Dict[str, Any]):
     timestamp = datetime.datetime.now().isoformat() + "Z"
     
     # Split content into sentences for processing
-    sentences = [s.strip() for s in content.split('.') if s.strip()]
+    sentences = split_into_sentences(document_text)
+    if not sentences:
+        sentences = [line.strip() for line in document_text.splitlines() if line.strip()]
     sentence_count = len(sentences)
+    meaningful_sentences = [s for s in sentences if len(s.strip()) > 20]
     
     triage_created = None
 
@@ -1086,8 +1245,8 @@ async def ingest_document(request: Dict[str, Any]):
                     doc_id=doc_id,
                     source="manual",
                     title=title,
-                    raw_text=content,
-                    document_metadata={"file_name": file_name, "upload_method": "manual"}
+                    raw_text=document_text,
+                    document_metadata=document_metadata
                 )
                 session.add(document)
                 session.flush()  # Get document ID
@@ -1095,48 +1254,53 @@ async def ingest_document(request: Dict[str, Any]):
                 # Create sentences and triage items
                 created_items = 0
                 for i, sentence in enumerate(sentences):
-                    if len(sentence) > 20:  # Only meaningful sentences
-                        # Create sentence
-                        sent_obj = Sentence(
-                            sent_id=f"{doc_id}_sent_{i+1}",
-                            document_id=document.id,
-                            start_offset=0,  # Would need proper calculation
-                            end_offset=len(sentence),
-                            text=sentence + "."
-                        )
-                        session.add(sent_obj)
-                        session.flush()  # Get sentence ID
-                        
-                        # Create triage item
-                        item_counter = int(timestamp.replace(":", "").replace("-", "").replace("T", "").replace("Z", "")[:12]) + i
-                        priority_score = 0.8 + (0.1 * max(0, 3-i))
-                        priority_level = "high" if priority_score >= 0.8 else "medium"
-                        
-                        # Create a placeholder candidate for the triage item
-                        # This is needed because TriageItem requires a candidate_id
-                        placeholder_candidate = Candidate(
-                            sentence_id=sent_obj.id,
-                            candidate_type="pending",
-                            label="NEEDS_ANNOTATION",
-                            confidence=0.0,
-                            model_name="manual_upload",
-                            generation_method="manual"
-                        )
-                        session.add(placeholder_candidate)
-                        session.flush()  # Get candidate ID
-                        
-                        triage_item = TriageItem(
-                            item_id=str(item_counter),
-                            sentence_id=sent_obj.id,
-                            candidate_id=placeholder_candidate.id,
-                            priority_score=priority_score,
-                            priority_level=priority_level,
-                            confidence_score=0.0,
-                            status="pending"
-                        )
-                        session.add(triage_item)
-                        created_items += 1
-                
+                    sentence_text = sentence.strip()
+                    if len(sentence_text) <= 20:
+                        continue
+
+                    text_value = sentence_text if sentence_text.endswith((".", "!", "?")) else f"{sentence_text}."
+
+                    # Create sentence
+                    sent_obj = Sentence(
+                        sent_id=f"{doc_id}_sent_{i+1}",
+                        document_id=document.id,
+                        start_offset=0,  # Would need proper calculation
+                        end_offset=len(text_value),
+                        text=text_value
+                    )
+                    session.add(sent_obj)
+                    session.flush()  # Get sentence ID
+
+                    # Create triage item
+                    item_counter = int(timestamp.replace(":", "").replace("-", "").replace("T", "").replace("Z", "")[:12]) + i
+                    priority_score = 0.8 + (0.1 * max(0, 3-i))
+                    priority_level = "high" if priority_score >= 0.8 else "medium"
+
+                    # Create a placeholder candidate for the triage item
+                    # This is needed because TriageItem requires a candidate_id
+                    placeholder_candidate = Candidate(
+                        sentence_id=sent_obj.id,
+                        candidate_type="pending",
+                        label="NEEDS_ANNOTATION",
+                        confidence=0.0,
+                        model_name="manual_upload",
+                        generation_method="manual"
+                    )
+                    session.add(placeholder_candidate)
+                    session.flush()  # Get candidate ID
+
+                    triage_item = TriageItem(
+                        item_id=str(item_counter),
+                        sentence_id=sent_obj.id,
+                        candidate_id=placeholder_candidate.id,
+                        priority_score=priority_score,
+                        priority_level=priority_level,
+                        confidence_score=0.0,
+                        status="pending"
+                    )
+                    session.add(triage_item)
+                    created_items += 1
+
                 session.commit()
                 logger.info(f"💾 [DATABASE] Saved document {doc_id} with {sentence_count} sentences and {created_items} triage items")
                 triage_created = created_items
@@ -1150,6 +1314,8 @@ async def ingest_document(request: Dict[str, Any]):
                 file_name=file_name,
                 sentences=sentences,
                 timestamp=timestamp,
+                raw_text=document_text,
+                metadata=document_metadata,
             )
             triage_created = created_items
     else:
@@ -1161,9 +1327,11 @@ async def ingest_document(request: Dict[str, Any]):
             file_name=file_name,
             sentences=sentences,
             timestamp=timestamp,
+            raw_text=document_text,
+            metadata=document_metadata,
         )
     if triage_created is None:
-        triage_created = len([s for s in sentences if len(s) > 20])
+        triage_created = len(meaningful_sentences)
     logger.info(f"✅ [INGEST] Document '{title}' added with {sentence_count} sentences, {triage_created} triage items created")
     
     return {

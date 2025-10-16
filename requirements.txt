@@ -8,6 +8,7 @@ typing-extensions>=4.0
 nltk>=3.8
 spacy>=3.5
 # Run after install: python -m spacy download en_core_web_sm
+pdfminer.six>=20231228
 
 # LLM support
 openai>=1.0  # For GPT models

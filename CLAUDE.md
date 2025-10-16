@@ -41,6 +41,10 @@ python services/candidates/llm_candidate_generator.py
 
 # Export training data
 python scripts/export_training_data.py --format scibert
+
+# Export documents for RAG storage
+python scripts/export_documents_for_rag.py --all  # Export all documents
+python scripts/export_documents_for_rag.py --summary  # Show export summary
 ```
 
 ### Testing
