@@ -775,20 +775,35 @@ async def get_triage_queue(limit: int = 100, offset: int = 0, status: str = None
         logger.info(f"🎯 [SINGLE TRIAGE ENDPOINT] Queue requested: limit={limit}, status={status}")
         
         # Load from persistent storage EVERY TIME
-        stored_docs, stored_items = load_storage()
-        logger.info(f"📊 [SINGLE TRIAGE] Loaded from storage: {len(stored_items)} items")
+        try:
+            stored_docs, stored_items = load_storage()
+            logger.info(f"📊 [SINGLE TRIAGE] Loaded from storage: {len(stored_items)} items")
+        except Exception as e:
+            logger.error(f"❌ [TRIAGE] load_storage() failed: {e}")
+            raise e
         
         # Mock items for demonstration
-        mock_items = get_mock_triage_items()
+        try:
+            mock_items = get_mock_triage_items()
+            logger.info(f"📊 [SINGLE TRIAGE] Generated {len(mock_items)} mock items")
+        except Exception as e:
+            logger.error(f"❌ [TRIAGE] get_mock_triage_items() failed: {e}")
+            raise e
         
-        removed_default_ids = load_removed_default_items()
-        if removed_default_ids:
-            mock_items = [
-                item for item in mock_items
-                if canonical_identifier(item.get("item_id")) not in removed_default_ids
-            ]
-            if mock_items:
-                logger.info(f"🔍 [SINGLE TRIAGE] {len(removed_default_ids)} default items hidden from queue")
+        try:
+            removed_default_ids = load_removed_default_items()
+            logger.info(f"📊 [SINGLE TRIAGE] Loaded {len(removed_default_ids)} removed default IDs")
+            if removed_default_ids:
+                mock_items = [
+                    item for item in mock_items
+                    if canonical_identifier(item.get("item_id")) not in removed_default_ids
+                ]
+                if mock_items:
+                    logger.info(f"🔍 [SINGLE TRIAGE] {len(removed_default_ids)} default items hidden from queue")
+        except Exception as e:
+            logger.error(f"❌ [TRIAGE] load_removed_default_items() failed: {e}")
+            # Continue without filtering - this is not critical
+            logger.warning("⚠️ [TRIAGE] Continuing without removed defaults filtering")
 
         # Combine mock items with uploaded items (mock first for accessibility)
         all_items = mock_items + stored_items
