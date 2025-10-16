@@ -2228,7 +2228,9 @@ async def decide_annotation(request: Dict[str, Any]):
         
         fallback_annotation_id = annotation_id
         if not fallback_annotation_id:
-            fallback_annotation_id = f"fallback_{uuid.uuid4().hex[:12]}"
+            safe_doc = (doc_id or "doc").replace("/", "_")
+            safe_sent = (sent_id or "sent").replace("/", "_")
+            fallback_annotation_id = f"{safe_doc}_{safe_sent}_{int(timestamp.timestamp())}"
 
         sentence_text = None
         doc_title = None
