@@ -142,14 +142,48 @@ else:
         engine = None
         SessionLocal = None
     
-# FALLBACK IN-MEMORY STORAGE (MODULE LEVEL)
-fallback_documents = []
-fallback_triage_items = []
+# FALLBACK FILE-BASED STORAGE (PERSISTENT ACROSS REQUESTS)
+fallback_storage_file = Path("/tmp/railway_fallback_storage.json")
 
+def load_fallback_storage():
+    """Load fallback storage from persistent file"""
+    try:
+        if fallback_storage_file.exists():
+            with open(fallback_storage_file, 'r') as f:
+                data = json.load(f)
+            fallback_docs = data.get('documents', [])
+            fallback_items = data.get('triage_items', [])
+            logger.info(f"📂 [FALLBACK] Loaded {len(fallback_docs)} docs, {len(fallback_items)} items from file")
+            return fallback_docs, fallback_items
+    except Exception as e:
+        logger.error(f"❌ [FALLBACK] Failed to load storage: {e}")
+    return [], []
+
+def save_fallback_storage(documents, triage_items):
+    """Save fallback storage to persistent file"""
+    try:
+        data = {
+            'documents': documents,
+            'triage_items': triage_items,
+            'timestamp': datetime.datetime.now().isoformat(),
+            'total_count': len(documents) + len(triage_items)
+        }
+        
+        # Atomic write
+        temp_file = fallback_storage_file.with_suffix('.tmp')
+        with open(temp_file, 'w') as f:
+            json.dump(data, f, indent=2)
+        temp_file.rename(fallback_storage_file)
+        
+        logger.info(f"💾 [FALLBACK] Saved {len(documents)} docs, {len(triage_items)} items to file")
+    except Exception as e:
+        logger.error(f"❌ [FALLBACK] Failed to save storage: {e}")
 
 def save_document_to_fallback(doc_id, title, file_name, sentences, timestamp):
-    """Persist uploaded content to in-memory fallback storage."""
-    global fallback_documents, fallback_triage_items
+    """Persist uploaded content to file-based fallback storage."""
+    
+    # Load existing data
+    fallback_documents, fallback_triage_items = load_fallback_storage()
 
     # Drop any previous entries for this document to avoid duplicates
     fallback_documents = [doc for doc in fallback_documents if doc.get("doc_id") != doc_id]
@@ -191,8 +225,11 @@ def save_document_to_fallback(doc_id, title, file_name, sentences, timestamp):
         fallback_triage_items.append(triage_item)
         created_items += 1
 
+    # Save to persistent file
+    save_fallback_storage(fallback_documents, fallback_triage_items)
+
     logger.info(
-        "💾 [FALLBACK] Saved document %s with %s triage items to in-memory storage",
+        "💾 [FALLBACK] Saved document %s with %s triage items to persistent storage",
         doc_id,
         created_items,
     )
@@ -204,8 +241,8 @@ def load_storage():
     """Load documents and triage items from database"""
     if not engine or not SessionLocal:
         logger.warning("⚠️ No database connection, using fallback storage")
-        # Return fallback in-memory storage + some mock data
-        global fallback_documents, fallback_triage_items
+        # Load from persistent file-based fallback storage
+        fallback_documents, fallback_triage_items = load_fallback_storage()
         
         mock_docs = [
             {
@@ -1962,17 +1999,28 @@ async def test_openai_direct():
 @app.get("/api/debug/storage")
 async def debug_storage():
     """Debug persistent storage state"""
+    # Load from file-based fallback storage
+    fallback_docs, fallback_items = load_fallback_storage()
     stored_docs, stored_items = load_storage()
+    
     return {
-        "storage_file": str(storage_file),
-        "storage_exists": storage_file.exists(),
-        "uploaded_documents": {
-            "count": len(stored_docs),
-            "documents": stored_docs
+        "fallback_storage": {
+            "file_path": str(fallback_storage_file),
+            "file_exists": fallback_storage_file.exists(),
+            "fallback_documents_count": len(fallback_docs),
+            "fallback_triage_items_count": len(fallback_items),
+            "fallback_documents": fallback_docs,
+            "fallback_triage_items": fallback_items[:5]  # First 5 items only
         },
-        "triage_items": {
-            "count": len(stored_items),
-            "items": stored_items
+        "loaded_storage": {
+            "loaded_docs_count": len(stored_docs),
+            "loaded_items_count": len(stored_items), 
+            "loaded_docs": stored_docs,
+            "loaded_items": stored_items[:5]  # First 5 items only
+        },
+        "database_status": {
+            "engine_available": engine is not None,
+            "session_available": SessionLocal is not None
         }
     }
 
