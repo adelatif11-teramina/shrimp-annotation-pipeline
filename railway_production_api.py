@@ -63,85 +63,84 @@ except ImportError as e:
     logger.error(f"❌ OpenAI import failed: {e}")
     import_status['openai'] = False
 
+# Check for OpenAI API key
+openai_key = os.getenv("OPENAI_API_KEY")
+if not openai_key:
+    logger.warning("⚠️ No OPENAI_API_KEY environment variable found in Railway")
+    logger.info("🔄 Triplet generation will use enhanced fallback mode")
+else:
+    logger.info(f"✅ OpenAI API key found: {openai_key[:10]}...")
+
+# Import the full annotation API or create minimal one
 try:
-    # Check for OpenAI API key
-    openai_key = os.getenv("OPENAI_API_KEY")
-    if not openai_key:
-        logger.warning("⚠️ No OPENAI_API_KEY environment variable found in Railway")
-        logger.info("🔄 Triplet generation will use enhanced fallback mode")
-    else:
-        logger.info(f"✅ OpenAI API key found: {openai_key[:10]}...")
+    from services.api.annotation_api import app
+    logger.info("✅ Successfully imported full annotation API")
+    import_status['main_api'] = True
+except ImportError as e:
+    logger.error(f"❌ Full API import failed: {e}, creating minimal API")
+    import_status['main_api'] = False
     
-    # Import the full annotation API or create minimal one
+    # Create minimal FastAPI app
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+    
+    app = FastAPI(
+        title="Shrimp Annotation Pipeline API (Minimal)",
+        description="Minimal Railway-compatible API",
+        version="1.0.0"
+    )
+    
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+# Import required modules
+from fastapi import HTTPException, Depends, WebSocket, Body
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from typing import Optional, Dict, Any, List, Set
+import datetime
+import json
+from collections import defaultdict
+
+# DATABASE SETUP - THE SINGLE SOURCE OF TRUTH
+database_url = os.getenv("DATABASE_URL")
+if not database_url:
+    logger.error("❌ DATABASE_URL environment variable not found!")
+    logger.error("❌ Please add PostgreSQL database to Railway and set DATABASE_URL")
+    logger.warning("⚠️ Continuing with fallback storage mode...")
+    engine = None
+    SessionLocal = None
+else:
+    # Fix Railway's postgres:// URL to postgresql://
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    
+    logger.info(f"🔗 Connecting to database: {database_url[:50]}...")
+    
     try:
-        from services.api.annotation_api import app
-        logger.info("✅ Successfully imported full annotation API")
-        import_status['main_api'] = True
-    except ImportError as e:
-        logger.error(f"❌ Full API import failed: {e}, creating minimal API")
-        import_status['main_api'] = False
+        engine = create_engine(database_url)
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
         
-        # Create minimal FastAPI app
-        from fastapi import FastAPI
-        from fastapi.middleware.cors import CORSMiddleware
+        # Test connection
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT 1"))
+            logger.info("✅ Database connection successful")
         
-        app = FastAPI(
-            title="Shrimp Annotation Pipeline API (Minimal)",
-            description="Minimal Railway-compatible API",
-            version="1.0.0"
-        )
+        # Create tables if they don't exist
+        Base.metadata.create_all(bind=engine)
+        logger.info("✅ Database tables created/verified")
         
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=["*"],
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-    
-    # Import required modules
-    from fastapi import HTTPException, Depends, WebSocket, Body
-    from fastapi.responses import JSONResponse, FileResponse
-    from fastapi.staticfiles import StaticFiles
-    from pydantic import BaseModel
-    from typing import Optional, Dict, Any, List, Set
-    import datetime
-    import json
-    from collections import defaultdict
-    
-    # DATABASE SETUP - THE SINGLE SOURCE OF TRUTH
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        logger.error("❌ DATABASE_URL environment variable not found!")
-        logger.error("❌ Please add PostgreSQL database to Railway and set DATABASE_URL")
-        logger.warning("⚠️ Continuing with fallback storage mode...")
+    except Exception as e:
+        logger.error(f"❌ Database connection failed: {e}")
+        logger.error("❌ Falling back to in-memory storage")
         engine = None
         SessionLocal = None
-    else:
-        # Fix Railway's postgres:// URL to postgresql://
-        if database_url.startswith("postgres://"):
-            database_url = database_url.replace("postgres://", "postgresql://", 1)
-        
-        logger.info(f"🔗 Connecting to database: {database_url[:50]}...")
-        
-        try:
-            engine = create_engine(database_url)
-            SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-            
-            # Test connection
-            with engine.connect() as conn:
-                result = conn.execute(text("SELECT 1"))
-                logger.info("✅ Database connection successful")
-            
-            # Create tables if they don't exist
-            Base.metadata.create_all(bind=engine)
-            logger.info("✅ Database tables created/verified")
-            
-        except Exception as e:
-            logger.error(f"❌ Database connection failed: {e}")
-            logger.error("❌ Falling back to in-memory storage")
-            engine = None
-            SessionLocal = None
     
 # FALLBACK IN-MEMORY STORAGE (MODULE LEVEL)
 fallback_documents = []
@@ -2073,10 +2072,6 @@ if ui_build.exists():
     logger.info("✅ Added React frontend serving routes")
 else:
     logger.warning("⚠️ Frontend build directory not found")
-
-except ImportError as e:
-    logger.error(f"❌ Failed to set up API: {e}")
-    sys.exit(1)
 
 if __name__ == "__main__":
     import uvicorn
