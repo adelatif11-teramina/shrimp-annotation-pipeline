@@ -117,6 +117,10 @@ try:
         logger.warning("⚠️ Continuing with fallback storage mode...")
         engine = None
         SessionLocal = None
+
+# FALLBACK IN-MEMORY STORAGE (MODULE LEVEL)
+fallback_documents = []
+fallback_triage_items = []
     else:
     
         # Fix Railway's postgres:// URL to postgresql://
@@ -148,33 +152,42 @@ try:
         """Load documents and triage items from database"""
         if not engine or not SessionLocal:
             logger.warning("⚠️ No database connection, using fallback storage")
-            # Fallback to mock data for testing
+            # Return fallback in-memory storage + some mock data
+            global fallback_documents, fallback_triage_items
+            
             mock_docs = [
                 {
                     "doc_id": "mock_doc_1",
-                    "title": "Test Document (Fallback Mode)",
+                    "title": "Demo: White Spot Syndrome Virus Research",
                     "sentence_count": 5,
                     "annotation_count": 0,
                     "status": "pending",
                     "created_at": "2024-01-01T00:00:00Z",
                     "updated_at": "2024-01-01T00:00:00Z",
-                    "file_name": "test.txt"
+                    "file_name": "demo.txt"
                 }
-            ]
+            ] if not fallback_documents else []  # Only show mock if no uploaded docs
+            
             mock_items = [
                 {
                     "item_id": "mock_item_1",
                     "doc_id": "mock_doc_1",
                     "sent_id": "mock_sent_1",
-                    "text": "This is a test sentence in fallback mode.",
-                    "priority_score": 0.8,
+                    "text": "White Spot Syndrome Virus (WSSV) is a major pathogen affecting Pacific white shrimp.",
+                    "priority_score": 0.9,
                     "confidence": 0.0,
                     "status": "pending",
-                    "priority_level": "high",
+                    "priority_level": "critical",
                     "created_at": "2024-01-01T00:00:00Z"
                 }
-            ]
-            return mock_docs, mock_items
+            ] if not fallback_triage_items else []  # Only show mock if no uploaded items
+            
+            # Combine uploaded documents with mock data
+            all_docs = fallback_documents + mock_docs
+            all_items = fallback_triage_items + mock_items
+            
+            logger.info(f"✅ Returning fallback storage: {len(all_docs)} docs ({len(fallback_documents)} uploaded + {len(mock_docs)} mock), {len(all_items)} items")
+            return all_docs, all_items
         
         try:
             with SessionLocal() as session:
@@ -942,7 +955,40 @@ try:
                 logger.info("🔄 [FALLBACK] Document saved to memory (will be lost on restart)")
         else:
             logger.warning("⚠️ [DATABASE] No database connection, using fallback storage")
-            logger.info("🔄 [FALLBACK] Document processed in memory mode (will be lost on restart)")
+            logger.info("🔄 [FALLBACK] Saving document to in-memory storage")
+            
+            # Save to in-memory storage (use global variables)
+            global fallback_documents, fallback_triage_items
+            new_document = {
+                "doc_id": doc_id,
+                "title": title,
+                "sentence_count": sentence_count,
+                "annotation_count": 0,
+                "status": "ingested",
+                "created_at": timestamp,
+                "updated_at": timestamp,
+                "file_name": file_name
+            }
+            fallback_documents.insert(0, new_document)
+            
+            # Create fallback triage items
+            for i, sentence in enumerate(sentences):
+                if len(sentence) > 20:  # Only meaningful sentences
+                    item_counter = int(timestamp.replace(":", "").replace("-", "").replace("T", "").replace("Z", "")[:12]) + i
+                    triage_item = {
+                        "item_id": str(item_counter),
+                        "doc_id": doc_id,
+                        "sent_id": f"{doc_id}_sent_{i+1}",
+                        "text": sentence + ".",
+                        "priority_score": 0.8 + (0.1 * max(0, 3-i)),
+                        "confidence": 0.0,
+                        "status": "pending",
+                        "priority_level": "high" if 0.8 + (0.1 * max(0, 3-i)) >= 0.8 else "medium",
+                        "created_at": timestamp
+                    }
+                    fallback_triage_items.append(triage_item)
+            
+            logger.info(f"💾 [FALLBACK] Saved document and {len([s for s in sentences if len(s) > 20])} triage items to memory")
         
         triage_created = len([s for s in sentences if len(s) > 20])
         logger.info(f"✅ [INGEST] Document '{title}' added with {sentence_count} sentences, {triage_created} triage items created")
