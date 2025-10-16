@@ -197,7 +197,8 @@ def save_document_to_fallback(doc_id, title, file_name, sentences, timestamp):
         "status": "ingested",
         "created_at": timestamp,
         "updated_at": timestamp,
-        "file_name": file_name
+        "file_name": file_name,
+        "source": "uploaded",
     }
     fallback_documents.insert(0, new_document)
 
@@ -212,7 +213,7 @@ def save_document_to_fallback(doc_id, title, file_name, sentences, timestamp):
         ) + i
 
         triage_item = {
-            "item_id": str(item_counter),
+            "item_id": item_counter,
             "doc_id": doc_id,
             "sent_id": f"{doc_id}_sent_{i + 1}",
             "text": sentence_text + ".",
@@ -220,7 +221,9 @@ def save_document_to_fallback(doc_id, title, file_name, sentences, timestamp):
             "confidence": 0.0,
             "status": "pending",
             "priority_level": "high" if 0.8 + (0.1 * max(0, 3 - i)) >= 0.8 else "medium",
-            "created_at": timestamp
+            "created_at": timestamp,
+            "source": "uploaded",
+            "doc_title": title,
         }
         fallback_triage_items.append(triage_item)
         created_items += 1
