@@ -54,13 +54,15 @@ const readFileAsBase64 = (file) =>
 
 function DocumentManager() {
   const [uploadDialog, setUploadDialog] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState(null);
   const [newDocument, setNewDocument] = useState({ title: '', text: '', source: 'manual' });
   const [selectedFile, setSelectedFile] = useState(null);
   const [filePayload, setFilePayload] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
 
   const queryClient = useQueryClient();
-  const { getDocuments, ingestDocument } = useAnnotationAPI();
+  const { getDocuments, ingestDocument, deleteDocument } = useAnnotationAPI();
 
   const documentsQuery = useQuery(['documents', { limit: 100 }], () => getDocuments({ limit: 100 }), {
     keepPreviousData: true,
@@ -74,6 +76,19 @@ function DocumentManager() {
     },
     onError: (error) => {
       const message = error?.message || 'Failed to upload document.';
+      handleSnackbar(message, 'error');
+    },
+  });
+
+  const deleteMutation = useMutation(deleteDocument, {
+    onSuccess: () => {
+      queryClient.invalidateQueries(['documents']);
+      handleSnackbar('Document deleted successfully.', 'success');
+      setDeleteDialog(false);
+      setDocumentToDelete(null);
+    },
+    onError: (error) => {
+      const message = error?.message || 'Failed to delete document.';
       handleSnackbar(message, 'error');
     },
   });
@@ -206,6 +221,26 @@ function DocumentManager() {
     setNewDocument({ title: '', text: '', source: 'manual' });
     setSelectedFile(null);
     setFilePayload(null);
+  };
+
+  const handleDeleteClick = (doc) => {
+    setDocumentToDelete(doc);
+    setDeleteDialog(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (documentToDelete) {
+      try {
+        await deleteMutation.mutateAsync(documentToDelete.doc_id);
+      } catch (error) {
+        console.error('Failed to delete document:', error);
+      }
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialog(false);
+    setDocumentToDelete(null);
   };
 
   const getStatusColor = (status) => {
@@ -351,7 +386,11 @@ function DocumentManager() {
                           </IconButton>
                         </Tooltip>
                         <Tooltip title="Delete document">
-                          <IconButton color="error">
+                          <IconButton 
+                            color="error" 
+                            onClick={() => handleDeleteClick(doc)}
+                            disabled={deleteMutation.isLoading}
+                          >
                             <DeleteIcon />
                           </IconButton>
                         </Tooltip>
@@ -419,6 +458,32 @@ function DocumentManager() {
             disabled={ingestMutation.isLoading}
           >
             {ingestMutation.isLoading ? 'Uploading…' : 'Upload'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialog} onClose={handleDeleteCancel}>
+        <DialogTitle>Delete Document</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete "{documentToDelete?.title || documentToDelete?.doc_id}"?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            This will permanently remove the document and all associated annotations. This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel}>
+            Cancel
+          </Button>
+          <Button 
+            variant="contained"
+            color="error"
+            onClick={handleDeleteConfirm}
+            disabled={deleteMutation.isLoading}
+          >
+            {deleteMutation.isLoading ? 'Deleting...' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -227,6 +227,13 @@ export function useAnnotationAPI() {
     [apiCall],
   );
 
+  const deleteDocument = useCallback(
+    async (docId) => {
+      return apiCall(`/api/documents/${docId}`, 'DELETE');
+    },
+    [apiCall],
+  );
+
   return {
     getCurrentItem,
     getNextItem,
@@ -239,6 +246,7 @@ export function useAnnotationAPI() {
     exportGoldData,
     getDocuments,
     ingestDocument,
+    deleteDocument,
     getAnnotations,
     getAnnotationDetail,
     getAnnotationStatistics,
