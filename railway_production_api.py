@@ -147,9 +147,20 @@ else:
             result = conn.execute(text("SELECT 1"))
             logger.info("✅ Database connection successful")
         
-        # Create tables if they don't exist
-        Base.metadata.create_all(bind=engine)
-        logger.info("✅ Database tables created/verified")
+        # Run Alembic migrations instead of create_all to handle UUID schema properly
+        try:
+            from alembic.config import Config
+            from alembic import command
+            
+            logger.info("🔄 Running Alembic migrations...")
+            alembic_cfg = Config("alembic.ini")
+            command.upgrade(alembic_cfg, "head")
+            logger.info("✅ Alembic migrations completed successfully")
+        except Exception as alembic_error:
+            logger.warning(f"⚠️ Alembic migration failed: {alembic_error}")
+            logger.info("🔄 Falling back to create_all for basic table creation...")
+            Base.metadata.create_all(bind=engine)
+            logger.info("✅ Database tables created/verified via fallback")
         
     except Exception as e:
         logger.error(f"❌ Database connection failed: {e}")
