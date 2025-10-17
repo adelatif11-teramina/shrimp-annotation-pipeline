@@ -40,7 +40,7 @@ class Document(Base):
     title = Column(String(500))
     pub_date = Column(DateTime)
     raw_text = Column(Text, nullable=False)
-    document_metadata = Column(JSON, default={})
+    document_metadata = Column(JSON, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -189,7 +189,7 @@ class AnnotationEvent(Base):
     decision = Column(String(50))
     
     # Event metadata
-    document_metadata = Column(JSON, default={})
+    document_metadata = Column(JSON, default=dict)
     
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
 
@@ -259,13 +259,13 @@ class ModelTrainingRun(Base):
     triggered_by = Column(String(255))  # User or system that triggered training
     
     # Training configuration
-    hyperparameters = Column(JSON, default={})
-    training_config = Column(JSON, default={})
+    hyperparameters = Column(JSON, default=dict)
+    training_config = Column(JSON, default=dict)
     
     # Performance metrics
-    train_metrics = Column(JSON, default={})
-    val_metrics = Column(JSON, default={})
-    test_metrics = Column(JSON, default={})
+    train_metrics = Column(JSON, default=dict)
+    val_metrics = Column(JSON, default=dict)
+    test_metrics = Column(JSON, default=dict)
     
     # Status tracking
     status = Column(String(50), nullable=False, default="initiated")  # initiated, queued, running, completed, failed
@@ -295,7 +295,7 @@ class DatabaseManager:
             source=source,
             title=title,
             raw_text=raw_text,
-            metadata=metadata or {}
+            document_metadata=metadata or {}
         )
         
         self.session.add(doc)
