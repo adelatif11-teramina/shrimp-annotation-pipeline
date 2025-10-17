@@ -43,8 +43,8 @@ ENV LOG_LEVEL=INFO
 EXPOSE ${PORT:-8000}
 
 # Copy and make startup script executable
-COPY railway_start.sh /app/
-RUN chmod +x /app/railway_start.sh
+COPY railway_direct_start.sh /app/
+RUN chmod +x /app/railway_direct_start.sh
 
 # Start application with startup script
-CMD ["/app/railway_start.sh"]
+CMD ["/app/railway_direct_start.sh"]
