@@ -1720,18 +1720,42 @@ async def delete_draft_annotation(request: Dict[str, Any]):
 @app.get("/api/annotations/statistics")
 async def get_annotation_statistics():
     """Get annotation statistics"""
-    storage_annotations = load_annotation_records(include_mock=True)
-    stats = compute_annotation_statistics(storage_annotations)
+    try:
+        storage_annotations = load_annotation_records(include_mock=True)
+        stats = compute_annotation_statistics(storage_annotations)
 
-    # Include additional summary shortcuts for legacy UI expectations
-    summary = stats.get("summary", {})
-    stats.update({
-        "total_annotations": summary.get("total_annotations", 0),
-        "completed_annotations": summary.get("completed_annotations", 0),
-        "pending_annotations": summary.get("pending", 0),
-    })
+        # Include additional summary shortcuts for legacy UI expectations
+        summary = stats.get("summary", {})
+        stats.update({
+            "total_annotations": summary.get("total_annotations", 0),
+            "completed_annotations": summary.get("completed_annotations", 0),
+            "pending_annotations": summary.get("pending", 0),
+        })
 
-    return stats
+        return stats
+    except Exception as e:
+        logger.error(f"❌ Annotation statistics failed: {e}")
+        # Return default statistics instead of failing
+        return {
+            "summary": {
+                "total_annotations": 0,
+                "accepted": 0,
+                "rejected": 0,
+                "modified": 0,
+                "skipped": 0,
+                "pending": 0,
+                "acceptance_rate": 0.0,
+                "avg_confidence": 0.0,
+                "last_updated": None,
+            },
+            "total_annotations": 0,
+            "completed_annotations": 0,
+            "pending_annotations": 0,
+            "annotations": [],
+            "by_user": [],
+            "by_date": [],
+            "error": "Failed to load annotation statistics"
+        }
 
 # MISSING ENDPOINTS THAT FRONTEND EXPECTS
 @app.get("/api/statistics/overview")
@@ -1739,25 +1763,41 @@ async def get_statistics_overview():
     """Get overview statistics for dashboard"""
     logger.info("📊 [STATS] Overview statistics requested")
 
-    stored_docs, stored_items = load_storage()
-    annotations = compute_annotation_statistics(load_annotation_records(include_mock=True))
-    summary = annotations.get("summary", {})
+    try:
+        stored_docs, stored_items = load_storage()
+        annotations = compute_annotation_statistics(load_annotation_records(include_mock=True))
+        summary = annotations.get("summary", {})
 
-    unique_users = len({user.get("user_id") for user in annotations.get("by_user", [])})
+        unique_users = len({user.get("user_id") for user in annotations.get("by_user", [])})
 
-    pending_triage = len([item for item in stored_items if (item.get("status") or "").lower() != "completed"])
+        pending_triage = len([item for item in stored_items if (item.get("status") or "").lower() != "completed"])
 
-    return {
-        "total_documents": len(stored_docs),
-        "total_annotations": summary.get("total_annotations", 0),
-        "total_candidates": len(stored_items),
-        "active_users": unique_users,
-        "pending_triage_items": pending_triage,
-        "completed_annotations": summary.get("completed_annotations", 0),
-        "annotation_rate": summary.get("acceptance_rate", 0) / 100 if summary.get("total_annotations", 0) else 0,
-        "avg_confidence": summary.get("avg_confidence", 0),
-        "last_updated": summary.get("last_updated"),
-    }
+        return {
+            "total_documents": len(stored_docs),
+            "total_annotations": summary.get("total_annotations", 0),
+            "total_candidates": len(stored_items),
+            "active_users": unique_users,
+            "pending_triage_items": pending_triage,
+            "completed_annotations": summary.get("completed_annotations", 0),
+            "annotation_rate": summary.get("acceptance_rate", 0) / 100 if summary.get("total_annotations", 0) else 0,
+            "avg_confidence": summary.get("avg_confidence", 0),
+            "last_updated": summary.get("last_updated"),
+        }
+    except Exception as e:
+        logger.error(f"❌ Overview statistics failed: {e}")
+        # Return default statistics instead of failing
+        return {
+            "total_documents": 0,
+            "total_annotations": 0,
+            "total_candidates": 0,
+            "active_users": 0,
+            "pending_triage_items": 0,
+            "completed_annotations": 0,
+            "annotation_rate": 0.0,
+            "avg_confidence": 0.0,
+            "last_updated": None,
+            "error": "Failed to load overview statistics"
+        }
 
 @app.get("/api/triage/next")
 async def get_next_triage_item():

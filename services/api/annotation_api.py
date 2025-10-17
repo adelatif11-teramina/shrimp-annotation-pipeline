@@ -761,7 +761,19 @@ async def get_triage_statistics() -> Dict[str, Any]:
     if not triage_engine:
         raise HTTPException(status_code=503, detail="Triage engine not available")
     
-    return triage_engine.get_queue_statistics()
+    try:
+        return triage_engine.get_queue_statistics()
+    except Exception as e:
+        logger.error(f"Triage statistics failed: {e}")
+        # Return default statistics instead of failing
+        return {
+            "total_items": 0,
+            "by_priority": {},
+            "by_type": {},
+            "completed_items": 0,
+            "pending_items": 0,
+            "error": "Failed to load statistics"
+        }
 
 # Helper function for queue repopulation
 async def repopulate_queue_from_documents():
@@ -1232,6 +1244,53 @@ async def get_documents() -> Dict[str, Any]:
         logger.error(f"Document listing failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.delete("/documents/{doc_id}")
+async def delete_document(doc_id: str) -> Dict[str, Any]:
+    """Delete a document and associated files"""
+    try:
+        data_dir = pipeline_root / "data"
+        deleted_files = []
+        
+        # Delete raw document file
+        raw_dir = data_dir / "raw"
+        raw_file = raw_dir / f"{doc_id}.txt"
+        if raw_file.exists():
+            raw_file.unlink()
+            deleted_files.append(str(raw_file))
+            logger.info(f"Deleted raw document: {raw_file}")
+        
+        # Delete gold annotation file
+        gold_dir = data_dir / "gold" 
+        gold_file = gold_dir / f"{doc_id}.json"
+        if gold_file.exists():
+            gold_file.unlink()
+            deleted_files.append(str(gold_file))
+            logger.info(f"Deleted gold annotations: {gold_file}")
+        
+        # Delete candidates file
+        candidates_dir = data_dir / "candidates"
+        candidates_file = candidates_dir / f"{doc_id}.json"
+        if candidates_file.exists():
+            candidates_file.unlink()
+            deleted_files.append(str(candidates_file))
+            logger.info(f"Deleted candidates: {candidates_file}")
+        
+        if not deleted_files:
+            raise HTTPException(status_code=404, detail=f"Document {doc_id} not found")
+        
+        return {
+            "doc_id": doc_id,
+            "deleted_files": deleted_files,
+            "status": "deleted",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Document deletion failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Queue population endpoint
 @app.post("/triage/populate")
 async def populate_triage_queue() -> Dict[str, Any]:
@@ -1328,17 +1387,33 @@ async def get_system_statistics() -> Dict[str, Any]:
         "services": {}
     }
     
-    if triage_engine:
-        stats["services"]["triage"] = triage_engine.get_queue_statistics()
+    try:
+        if triage_engine:
+            stats["services"]["triage"] = triage_engine.get_queue_statistics()
+        else:
+            stats["services"]["triage"] = {"error": "Triage engine not available"}
+    except Exception as e:
+        logger.error(f"Triage statistics failed: {e}")
+        stats["services"]["triage"] = {"error": "Failed to load triage statistics"}
     
-    if rule_engine:
-        stats["services"]["rules"] = rule_engine.get_statistics()
+    try:
+        if rule_engine:
+            stats["services"]["rules"] = rule_engine.get_statistics()
+        else:
+            stats["services"]["rules"] = {"error": "Rule engine not available"}
+    except Exception as e:
+        logger.error(f"Rule statistics failed: {e}")
+        stats["services"]["rules"] = {"error": "Failed to load rule statistics"}
     
     # Count gold annotations
-    gold_dir = pipeline_root / "data/gold"
-    if gold_dir.exists():
-        stats["gold_annotations"] = len(list(gold_dir.glob("*.json")))
-    else:
+    try:
+        gold_dir = pipeline_root / "data/gold"
+        if gold_dir.exists():
+            stats["gold_annotations"] = len(list(gold_dir.glob("*.json")))
+        else:
+            stats["gold_annotations"] = 0
+    except Exception as e:
+        logger.error(f"Gold annotations count failed: {e}")
         stats["gold_annotations"] = 0
     
     return stats
