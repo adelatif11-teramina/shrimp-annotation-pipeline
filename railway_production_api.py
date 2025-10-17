@@ -1118,9 +1118,26 @@ async def get_triage_queue(limit: int = 100, offset: int = 0, status: str = None
         if final_items:
             item_ids = [item.get("item_id") for item in final_items[:10]]
             logger.info(f"🔍 [DEBUG] First 10 item IDs: {item_ids}")
-            
-            mock_count = len([item for item in final_items if item.get("item_id", 0) <= 10])
-            uploaded_count = len([item for item in final_items if item.get("item_id", 0) > 10])
+
+            def _as_int(value: Any) -> Optional[int]:
+                """Best effort conversion of mixed-type IDs for logging/debug."""
+                if value is None:
+                    return None
+                try:
+                    return int(str(value).strip())
+                except (TypeError, ValueError):
+                    return None
+
+            mock_count = 0
+            uploaded_count = 0
+            for item in final_items:
+                item_id_as_int = _as_int(item.get("item_id"))
+                if item_id_as_int is None:
+                    continue
+                if item_id_as_int <= 10:
+                    mock_count += 1
+                else:
+                    uploaded_count += 1
             logger.info(f"🔍 [DEBUG] Mock items: {mock_count}, Uploaded items: {uploaded_count}")
     
         response = {
