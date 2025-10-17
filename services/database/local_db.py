@@ -104,6 +104,7 @@ class Candidate(Base):
     entities = Column(SQLiteJSON, default=list)
     relations = Column(SQLiteJSON, default=list)
     topics = Column(SQLiteJSON, default=list)
+    triplets = Column(SQLiteJSON, default=list)
     
     # Scoring
     confidence = Column(Float, default=0.0)
@@ -156,6 +157,7 @@ class GoldAnnotation(Base):
     entities = Column(SQLiteJSON, default=list)
     relations = Column(SQLiteJSON, default=list)
     topics = Column(SQLiteJSON, default=list)
+    triplets = Column(SQLiteJSON, default=list)
     
     # Decision tracking
     decision = Column(String, nullable=False)  # 'accept', 'reject', 'modify'

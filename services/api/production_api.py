@@ -300,6 +300,7 @@ async def submit_annotation(annotation: Dict[str, Any], background_tasks: Backgr
             entities=annotation.get("entities", []),
             relations=annotation.get("relations", []),
             topics=annotation.get("topics", []),
+            triplets=annotation.get("triplets", []),
             annotator_email=annotation.get("annotator", "unknown@example.com"),
             status=annotation.get("decision", "accepted"),
             confidence_level=annotation.get("confidence", "high"),
