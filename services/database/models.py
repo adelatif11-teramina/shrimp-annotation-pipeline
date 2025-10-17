@@ -16,6 +16,20 @@ import uuid
 
 Base = declarative_base()
 
+class User(Base):
+    """User model for authentication and authorization"""
+    __tablename__ = "users"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    email = Column(String(255), unique=True, index=True)
+    hashed_password = Column(String(255))
+    role = Column(String(20), nullable=False, default="annotator")
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_login = Column(DateTime)
+
 class Document(Base):
     """Document model for ingested documents"""
     __tablename__ = "documents"

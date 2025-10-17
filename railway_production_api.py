@@ -147,7 +147,7 @@ else:
             result = conn.execute(text("SELECT 1"))
             logger.info("✅ Database connection successful")
         
-        # Run Alembic migrations instead of create_all to handle UUID schema properly
+        # Run Alembic migrations - DETERMINISTIC SCHEMA REQUIRED
         try:
             from alembic.config import Config
             from alembic import command
@@ -157,10 +157,24 @@ else:
             command.upgrade(alembic_cfg, "head")
             logger.info("✅ Alembic migrations completed successfully")
         except Exception as alembic_error:
-            logger.warning(f"⚠️ Alembic migration failed: {alembic_error}")
-            logger.info("🔄 Falling back to create_all for basic table creation...")
-            Base.metadata.create_all(bind=engine)
-            logger.info("✅ Database tables created/verified via fallback")
+            error_msg = f"""
+❌ CRITICAL: Alembic migration failed: {alembic_error}
+
+🔧 DETERMINISTIC SCHEMA POLICY:
+The dangerous create_all() fallback has been removed to prevent non-deterministic schema creation.
+All database schema changes MUST go through Alembic migrations for consistency.
+
+🛠️ TO FIX THIS ISSUE:
+1. Check that DATABASE_URL is correctly set for Railway PostgreSQL
+2. Ensure the database exists and is accessible
+3. Verify Alembic configuration in alembic.ini and alembic/env.py
+4. Run migrations manually if needed: 'alembic upgrade head'
+5. Check that all required models are properly imported in alembic/env.py
+
+❌ APPLICATION STARTUP FAILED - Schema must be deterministic!
+"""
+            logger.error(error_msg)
+            raise RuntimeError(f"Alembic migration failed: {alembic_error}. No fallback available - deterministic schema required.")
         
     except Exception as e:
         logger.error(f"❌ Database connection failed: {e}")
@@ -767,7 +781,7 @@ def load_annotations_storage() -> List[Dict[str, Any]]:
                     "entities": ann.entities or [],
                     "relations": ann.relations or [],
                     "topics": ann.topics or [],
-                    "triplets": [],  # Can be derived from relations if needed
+                    "triplets": ann.triplets or [],
                     "status": ann.status,
                     "decision": ann.status,
                     "confidence": getattr(ann, 'confidence_level', 'medium'),
@@ -2136,6 +2150,7 @@ async def decide_annotation(request: Dict[str, Any]):
                                 entities=entities,
                                 relations=relations,
                                 topics=topics,
+                                triplets=triplets,
                                 annotator_email=user_id,
                                 status="accepted" if decision == "accept" else decision,
                                 confidence_level="high" if confidence > 0.8 else "medium" if confidence > 0.5 else "low",
