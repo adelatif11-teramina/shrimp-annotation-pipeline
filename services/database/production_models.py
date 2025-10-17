@@ -79,6 +79,7 @@ class Candidate(Base):
     entities = Column(JSON)
     relations = Column(JSON)
     topics = Column(JSON)
+    triplets = Column(JSON)
     
     # Scoring
     confidence = Column(Float, index=True)

@@ -100,9 +100,10 @@ class GoldAnnotation(Base):
     sentence_id = Column(UUID(as_uuid=True), ForeignKey("sentences.id"), nullable=False)
     
     # Annotation data (stored as JSON for flexibility)
-    entities = Column(JSON, default=[])
-    relations = Column(JSON, default=[])
-    topics = Column(JSON, default=[])
+    entities = Column(JSON, default=list)
+    relations = Column(JSON, default=list)
+    topics = Column(JSON, default=list)
+    triplets = Column(JSON, default=list)
     
     # Annotation metadata
     annotator_email = Column(String(255), nullable=False)
