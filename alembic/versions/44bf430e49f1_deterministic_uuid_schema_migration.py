@@ -1,15 +1,17 @@
 """deterministic_uuid_schema_migration
 
-CRITICAL: This migration deterministically converts the database from INTEGER to UUID schema.
+INITIAL MIGRATION: Creates deterministic UUID schema for Railway production deployment.
 
-From: eb64a6ba0005 (INTEGER schema, 5 tables) 
-To: Complete UUID schema with all 9 tables
+This migration handles ANY existing database state:
+- Empty database: Creates complete UUID schema from scratch  
+- Existing INTEGER tables: Drops and recreates with UUID schema
+- Mixed state: Cleans everything and rebuilds deterministically
 
-Strategy: Clean replacement - Drop existing schema and create correct UUID schema.
-This is safe because triplet data wasn't being saved due to the schema mismatch.
+Strategy: Clean replacement - Drop any existing schema and create correct UUID schema.
+This ensures consistent state regardless of previous deployment attempts.
 
 Revision ID: 44bf430e49f1
-Revises: eb64a6ba0005
+Revises: None (Initial migration)
 Create Date: 2025-10-17 12:35:48.583960
 
 """
@@ -22,7 +24,7 @@ from sqlalchemy.dialects.postgresql import UUID
 
 # revision identifiers, used by Alembic.
 revision: str = '44bf430e49f1'
-down_revision: Union[str, Sequence[str], None] = 'eb64a6ba0005'
+down_revision: Union[str, Sequence[str], None] = None  # Can run from any state (initial or existing)
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -52,17 +54,23 @@ def upgrade() -> None:
         else:
             raise e
     
-    # STEP 2: Drop existing tables in correct order (respecting foreign keys)
-    print("🗑️ Dropping existing INTEGER schema tables...")
+    # STEP 2: Drop ALL existing tables (handles any previous schema state)
+    print("🗑️ Dropping all existing tables to ensure clean UUID schema...")
     
-    # Drop in reverse dependency order
-    tables_to_drop = ['annotations', 'candidates', 'sentences', 'users', 'documents']
-    for table in tables_to_drop:
+    # Comprehensive list of tables that might exist from any previous state
+    all_possible_tables = [
+        'model_training_runs', 'auto_accept_decisions', 'auto_accept_rules',
+        'annotation_events', 'triage_items', 'gold_annotations', 'annotations',
+        'candidates', 'sentences', 'documents', 'users'
+    ]
+    
+    for table in all_possible_tables:
         try:
             op.drop_table(table)
             print(f"   ✅ Dropped table: {table}")
         except Exception as e:
-            print(f"   ⚠️ Could not drop {table} (may not exist): {e}")
+            # Expected for tables that don't exist - not an error
+            print(f"   ⚠️ Table {table} not found (skipping): {str(e)[:50]}...")
     
     # STEP 3: Create all tables with correct UUID schema
     print("🏗️ Creating UUID schema tables...")
@@ -263,10 +271,10 @@ def upgrade() -> None:
     )
     
     print("✅ UUID schema created successfully!")
-    print("🎉 DETERMINISTIC MIGRATION COMPLETED - Database now uses UUID schema with all 9 tables")
-    print("📊 Tables created: documents, sentences, candidates, gold_annotations, triage_items,")
-    print("                   annotation_events, auto_accept_rules, auto_accept_decisions, model_training_runs, users")
-    print("🔧 Triplet saving will now work correctly!")
+    print("🎉 INITIAL MIGRATION COMPLETED - Database ready with deterministic UUID schema")
+    print("📊 All 10 tables created: documents, sentences, candidates, gold_annotations, triage_items,")
+    print("                          annotation_events, auto_accept_rules, auto_accept_decisions, model_training_runs, users")
+    print("🚀 Railway deployment ready - triage queue and triplet saving will work correctly!")
 
 
 def downgrade() -> None:
