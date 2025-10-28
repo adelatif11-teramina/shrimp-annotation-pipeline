@@ -58,6 +58,17 @@ api:
   log_level: info
   cors_origins: ["http://localhost:3000", "http://127.0.0.1:3000"]
 
+# Document Chunking Configuration (UPGRADED TO SMART CHUNKING)
+chunking:
+  mode: smart_paragraph  # smart_paragraph (recommended), sentence, paragraph
+  target_length: [150, 400]  # [min_chars, max_chars] for optimal annotation
+  preserve_context: true
+  context_features:
+    - definitions
+    - pronouns
+    - discourse_markers
+  fallback_mode: sentence  # If smart chunking fails
+
 # UI Configuration
 ui:
   host: 127.0.0.1

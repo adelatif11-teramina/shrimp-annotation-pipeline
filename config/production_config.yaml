@@ -1,0 +1,132 @@
+# Production Configuration for Railway Deployment
+# This configuration enables smart chunking for production deployment
+
+# Database Configuration (Railway PostgreSQL)
+database:
+  type: postgresql
+  url_from_env: DATABASE_URL  # Railway automatically provides this
+  echo: false
+  pool_size: 10
+  max_overflow: 20
+  pool_timeout: 30
+
+# Cache Configuration (Redis for production)
+cache:
+  type: redis
+  url_from_env: REDIS_URL  # Railway Redis addon
+  ttl: 3600
+  max_size: 10000
+
+# LLM Configuration (Production settings)
+llm:
+  provider: openai  # Primary provider for production
+  model: gpt-3.5-turbo  # Cost-effective and fast
+  fallback_provider: rules_only  # Fallback if API fails
+  api_key_from_env: OPENAI_API_KEY
+  temperature: 0.1
+  cache_responses: true
+  cache_dir: ./data/llm_cache
+  rate_limit: 100  # requests per minute
+
+# Document Chunking Configuration (SMART CHUNKING ENABLED)
+chunking:
+  mode: smart_paragraph  # PRODUCTION DEFAULT: Smart chunking for better annotation quality
+  target_length: [150, 400]  # Optimal range for human annotation
+  preserve_context: true
+  context_features:
+    - definitions        # Keep acronym definitions with usage
+    - pronouns          # Resolve pronoun references  
+    - discourse_markers # Preserve logical flow
+    - cross_references  # Maintain document coherence
+  fallback_mode: sentence  # Graceful degradation if smart chunking fails
+  quality_threshold: 0.8  # Minimum quality score for chunks
+
+# Authentication (Railway environment)
+auth:
+  enabled: true
+  type: jwt
+  secret_key_from_env: JWT_SECRET_KEY
+  token_expiry: 24h
+  roles: ["admin", "annotator", "reviewer"]
+
+# Storage Configuration (Railway persistent volumes)
+storage:
+  documents: ./data/documents
+  candidates: ./data/candidates
+  gold: ./data/gold
+  exports: ./data/exports
+  logs: ./data/logs
+  backups: ./data/backups
+
+# API Configuration (Railway production)
+api:
+  host: 0.0.0.0
+  port_from_env: PORT  # Railway automatically sets PORT
+  reload: false  # Disabled for production
+  log_level: info
+  cors_origins: ["*"]  # Configure as needed for security
+  max_request_size: 50MB
+  timeout: 300  # 5 minutes for large uploads
+
+# Queue Configuration (Redis-backed for production)
+queue:
+  type: redis
+  url_from_env: REDIS_URL
+  max_items: 50000
+  batch_size: 100
+  retry_attempts: 3
+
+# Auto-Accept Configuration (Production tuned)
+auto_accept:
+  enabled: true
+  max_rate: 0.2  # Conservative 20% auto-accept rate
+  quality_threshold: 0.95
+  rules:
+    - id: high_confidence_production
+      min_confidence: 0.98
+      min_agreement: 0.95
+      enabled: true
+    - id: definition_chunks
+      chunk_has_definitions: true
+      min_confidence: 0.92
+      enabled: true
+
+# Performance Settings (Production optimized)
+performance:
+  max_workers: 4  # Scale based on Railway plan
+  batch_size: 50
+  cache_enabled: true
+  connection_pool_size: 20
+  
+# Monitoring (Production monitoring)
+monitoring:
+  enabled: true
+  metrics_endpoint: /metrics
+  health_endpoint: /health
+  log_level: info
+  error_tracking: true
+  performance_tracking: true
+
+# Smart Chunking Quality Metrics (Production monitoring)
+chunking_quality:
+  track_metrics: true
+  log_statistics: true
+  alert_thresholds:
+    low_quality_score: 0.6  # Alert if chunk quality drops
+    high_fallback_rate: 0.3  # Alert if too many fallbacks
+    context_loss_rate: 0.1   # Alert if context preservation fails
+
+# Railway-specific settings
+railway:
+  environment: production
+  auto_deploy: true
+  health_check_path: /health
+  startup_command: "python railway_production_api.py"
+  
+# Security settings
+security:
+  enable_rate_limiting: true
+  max_requests_per_minute: 1000
+  enable_cors: true
+  log_requests: true
+  sanitize_inputs: true

@@ -34,7 +34,13 @@ function AnnotationMainPanel({
     <Paper sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ mb: 2 }}>
         <Typography variant="h6" gutterBottom>
-          Sentence
+          {currentItem?.chunk_type === 'smart_paragraph' ? 'Smart Chunk' : 
+           currentItem?.chunk_type === 'paragraph' ? 'Paragraph' : 'Sentence'}
+          {currentItem?.sentence_count > 1 && (
+            <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
+              ({currentItem.sentence_count} sentences)
+            </Typography>
+          )}
         </Typography>
         <Paper
           variant="outlined"

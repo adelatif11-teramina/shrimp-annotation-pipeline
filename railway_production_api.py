@@ -344,18 +344,62 @@ def extract_text_from_bytes(file_bytes: bytes, mime_type: Optional[str], file_na
     return ""
 
 
-def split_into_sentences(text: str) -> List[str]:
-    """Lightweight sentence splitter for uploaded content."""
+def split_into_smart_chunks(text: str) -> List[Dict[str, Any]]:
+    """Smart chunk splitter for uploaded content using improved chunking."""
     if not text:
         return []
+    
+    try:
+        # Import smart chunking service
+        from services.ingestion.smart_chunking import SmartChunkingService
+        
+        # Create smart chunks
+        chunker = SmartChunkingService(target_length=(150, 400))
+        smart_chunks = chunker.create_smart_chunks(text)
+        
+        # Convert to simple format for Railway storage
+        chunks = []
+        for chunk in smart_chunks:
+            chunks.append({
+                "chunk_id": chunk.chunk_id,
+                "text": chunk.text,
+                "start": chunk.start,
+                "end": chunk.end,
+                "sentence_count": chunk.sentence_count,
+                "char_count": chunk.char_count,
+                "chunk_type": "smart_paragraph",
+                "has_definitions": chunk.has_definitions,
+                "has_pronouns": chunk.has_pronouns
+            })
+        
+        logger.info(f"✓ Created {len(chunks)} smart chunks (avg {sum(c['char_count'] for c in chunks)/len(chunks):.0f} chars)")
+        return chunks
+        
+    except Exception as e:
+        logger.warning(f"Smart chunking failed, falling back to sentence splitting: {e}")
+        # Fallback to sentence splitting
+        candidates = re.split(r'(?<=[.!?])\s+|\n+', text)
+        sentences = [candidate.strip() for candidate in candidates if candidate and candidate.strip()]
+        
+        # Convert sentences to chunk format for consistency
+        chunks = []
+        for i, sentence in enumerate(sentences):
+            chunks.append({
+                "chunk_id": f"s{i}",
+                "text": sentence,
+                "start": 0,  # Simplified for fallback
+                "end": len(sentence),
+                "sentence_count": 1,
+                "char_count": len(sentence),
+                "chunk_type": "sentence",
+                "has_definitions": False,
+                "has_pronouns": False
+            })
+        return chunks
 
-    candidates = re.split(r'(?<=[.!?])\s+|\n+', text)
-    sentences = [candidate.strip() for candidate in candidates if candidate and candidate.strip()]
-    return sentences
 
-
-def save_document_to_fallback(doc_id, title, file_name, sentences, timestamp, raw_text, metadata=None):
-    """Persist uploaded content to file-based fallback storage."""
+def save_document_to_fallback(doc_id, title, file_name, chunks, timestamp, raw_text, metadata=None):
+    """Persist uploaded content to file-based fallback storage using smart chunks."""
     
     # Load existing data
     fallback_documents, fallback_triage_items = load_fallback_storage()
@@ -364,10 +408,14 @@ def save_document_to_fallback(doc_id, title, file_name, sentences, timestamp, ra
     fallback_documents = [doc for doc in fallback_documents if doc.get("doc_id") != doc_id]
     fallback_triage_items = [item for item in fallback_triage_items if item.get("doc_id") != doc_id]
 
+    # Calculate total sentence count from chunks
+    total_sentences = sum(chunk.get("sentence_count", 1) for chunk in chunks)
+
     new_document = {
         "doc_id": doc_id,
         "title": title,
-        "sentence_count": len(sentences),
+        "chunk_count": len(chunks),
+        "sentence_count": total_sentences,
         "annotation_count": 0,
         "status": "ingested",
         "created_at": timestamp,
@@ -376,20 +424,21 @@ def save_document_to_fallback(doc_id, title, file_name, sentences, timestamp, ra
         "source": "uploaded",
         "raw_text": raw_text,
         "metadata": metadata or {},
+        "chunking_mode": "smart_paragraph"
     }
     fallback_documents.insert(0, new_document)
 
     created_items = 0
-    for i, sentence in enumerate(sentences):
-        sentence_text = sentence.strip()
-        if len(sentence_text) <= 20:
+    for i, chunk in enumerate(chunks):
+        chunk_text = chunk.get("text", "").strip()
+        if len(chunk_text) <= 20:
             continue
 
         item_counter = int(
             timestamp.replace(":", "").replace("-", "").replace("T", "").replace("Z", "")[:12]
         ) + i
 
-        text_value = sentence_text
+        text_value = chunk_text
         if text_value and text_value[-1] not in ".!?":
             text_value = f"{text_value}."
 
@@ -1353,12 +1402,17 @@ async def ingest_document(request: Dict[str, Any]):
     doc_id = f"uploaded_{uuid.uuid4().hex[:12]}"
     timestamp = datetime.datetime.now().isoformat() + "Z"
     
-    # Split content into sentences for processing
-    sentences = split_into_sentences(document_text)
-    if not sentences:
-        sentences = [line.strip() for line in document_text.splitlines() if line.strip()]
-    sentence_count = len(sentences)
-    meaningful_sentences = [s for s in sentences if len(s.strip()) > 20]
+    # Split content into smart chunks for processing
+    chunks = split_into_smart_chunks(document_text)
+    if not chunks:
+        # Fallback: create simple chunks from lines
+        lines = [line.strip() for line in document_text.splitlines() if line.strip()]
+        chunks = [{"chunk_id": f"l{i}", "text": line, "chunk_type": "line", "sentence_count": 1, "char_count": len(line)} 
+                 for i, line in enumerate(lines)]
+    
+    chunk_count = len(chunks)
+    total_sentences = sum(chunk.get("sentence_count", 1) for chunk in chunks)
+    meaningful_chunks = [c for c in chunks if len(c.get("text", "").strip()) > 20]
     
     triage_created = None
 
@@ -1377,21 +1431,22 @@ async def ingest_document(request: Dict[str, Any]):
                 session.add(document)
                 session.flush()  # Get document ID
                 
-                # Create sentences and triage items
+                # Create chunks and triage items using smart chunking
                 created_items = 0
-                for i, sentence in enumerate(sentences):
-                    sentence_text = sentence.strip()
-                    if len(sentence_text) <= 20:
+                for i, chunk in enumerate(chunks):
+                    chunk_text = chunk.get("text", "").strip()
+                    if len(chunk_text) <= 20:
                         continue
 
-                    text_value = sentence_text if sentence_text.endswith((".", "!", "?")) else f"{sentence_text}."
+                    text_value = chunk_text if chunk_text.endswith((".", "!", "?")) else f"{chunk_text}."
 
-                    # Create sentence
+                    # Create sentences for each chunk (for backward compatibility)
+                    # In smart chunking, we store the full chunk as a "sentence" unit
                     sent_obj = Sentence(
-                        sent_id=f"{doc_id}_sent_{i+1}",
+                        sent_id=f"{doc_id}_chunk_{i+1}",  # Changed from sent to chunk
                         document_id=document.id,
-                        start_offset=0,  # Would need proper calculation
-                        end_offset=len(text_value),
+                        start_offset=chunk.get("start", 0),
+                        end_offset=chunk.get("end", len(text_value)),
                         text=text_value
                     )
                     session.add(sent_obj)
@@ -1428,7 +1483,7 @@ async def ingest_document(request: Dict[str, Any]):
                     created_items += 1
 
                 session.commit()
-                logger.info(f"💾 [DATABASE] Saved document {doc_id} with {sentence_count} sentences and {created_items} triage items")
+                logger.info(f"💾 [DATABASE] Saved document {doc_id} with {chunk_count} smart chunks ({total_sentences} sentences) and {created_items} triage items")
                 triage_created = created_items
                 
         except Exception as e:
@@ -1438,7 +1493,7 @@ async def ingest_document(request: Dict[str, Any]):
                 doc_id=doc_id,
                 title=title,
                 file_name=file_name,
-                sentences=sentences,
+                chunks=chunks,
                 timestamp=timestamp,
                 raw_text=document_text,
                 metadata=document_metadata,
@@ -1451,24 +1506,32 @@ async def ingest_document(request: Dict[str, Any]):
             doc_id=doc_id,
             title=title,
             file_name=file_name,
-            sentences=sentences,
+            chunks=chunks,
             timestamp=timestamp,
             raw_text=document_text,
             metadata=document_metadata,
         )
     if triage_created is None:
-        triage_created = len(meaningful_sentences)
-    logger.info(f"✅ [INGEST] Document '{title}' added with {sentence_count} sentences, {triage_created} triage items created")
+        triage_created = len(meaningful_chunks)
+    logger.info(f"✅ [INGEST] Document '{title}' added with {chunk_count} smart chunks ({total_sentences} sentences), {triage_created} triage items created")
     
     return {
         "success": True,
         "doc_id": doc_id,
         "title": title,
         "status": "ingested",
-        "sentence_count": sentence_count,
+        "chunk_count": chunk_count,
+        "sentence_count": total_sentences,
+        "chunking_mode": "smart_paragraph",
         "created_at": timestamp,
-        "triage_items_created": min(triage_created, sentence_count),
-        "message": f"Document '{title}' successfully ingested for annotation"
+        "triage_items_created": min(triage_created, chunk_count),
+        "message": f"Document '{title}' successfully ingested with smart chunking for annotation",
+        "chunking_info": {
+            "total_chunks": chunk_count,
+            "total_sentences": total_sentences,
+            "avg_chars_per_chunk": sum(c.get("char_count", 0) for c in chunks) // max(chunk_count, 1),
+            "chunks_with_context": sum(1 for c in chunks if c.get("has_definitions") or c.get("has_pronouns"))
+        }
     }
 
 # CANDIDATES GENERATION - Support both /api/candidates/generate and /candidates/generate
