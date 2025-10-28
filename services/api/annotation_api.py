@@ -278,19 +278,13 @@ async def startup_event():
         logger.warning(f"LLM generator initialization failed: {e}")
         llm_generator = None
     
-    # Initialize ingestion service with smart chunking for production (with fallback)
-    try:
-        from services.ingestion.chunking_integration import ImprovedDocumentIngestionService
-        ingestion_service = ImprovedDocumentIngestionService(
-            chunking_mode="smart_paragraph",
-            smart_chunk_length=(150, 400)
-        )
-        logger.info("✓ Document ingestion service initialized with smart chunking")
-    except ImportError as e:
-        logger.warning(f"Smart chunking import failed: {e}")
-        logger.info("🔄 Falling back to standard document ingestion")
-        ingestion_service = DocumentIngestionService()
-        logger.info("✓ Document ingestion service initialized (fallback mode)")
+    # Initialize ingestion service (temporarily disable smart chunking for stability)
+    logger.info("🔄 Using standard document ingestion service for Railway stability")
+    ingestion_service = DocumentIngestionService()
+    logger.info("✓ Document ingestion service initialized (standard mode)")
+    
+    # Smart chunking disabled temporarily to resolve Railway 502 errors
+    # TODO: Re-enable smart chunking once dependencies are stable
     
     # Initialize rule engine
     rule_engine = ShimpAquacultureRuleEngine()

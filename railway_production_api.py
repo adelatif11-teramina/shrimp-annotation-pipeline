@@ -349,53 +349,31 @@ def split_into_smart_chunks(text: str) -> List[Dict[str, Any]]:
     if not text:
         return []
     
-    try:
-        # Import smart chunking service
-        from services.ingestion.smart_chunking import SmartChunkingService
-        
-        # Create smart chunks
-        chunker = SmartChunkingService(target_length=(150, 400))
-        smart_chunks = chunker.create_smart_chunks(text)
-        
-        # Convert to simple format for Railway storage
-        chunks = []
-        for chunk in smart_chunks:
-            chunks.append({
-                "chunk_id": chunk.chunk_id,
-                "text": chunk.text,
-                "start": chunk.start,
-                "end": chunk.end,
-                "sentence_count": chunk.sentence_count,
-                "char_count": chunk.char_count,
-                "chunk_type": "smart_paragraph",
-                "has_definitions": chunk.has_definitions,
-                "has_pronouns": chunk.has_pronouns
-            })
-        
-        logger.info(f"✓ Created {len(chunks)} smart chunks (avg {sum(c['char_count'] for c in chunks)/len(chunks):.0f} chars)")
-        return chunks
-        
-    except Exception as e:
-        logger.warning(f"Smart chunking failed, falling back to sentence splitting: {e}")
-        # Fallback to sentence splitting
-        candidates = re.split(r'(?<=[.!?])\s+|\n+', text)
-        sentences = [candidate.strip() for candidate in candidates if candidate and candidate.strip()]
-        
-        # Convert sentences to chunk format for consistency
-        chunks = []
-        for i, sentence in enumerate(sentences):
-            chunks.append({
-                "chunk_id": f"s{i}",
-                "text": sentence,
-                "start": 0,  # Simplified for fallback
-                "end": len(sentence),
-                "sentence_count": 1,
-                "char_count": len(sentence),
-                "chunk_type": "sentence",
-                "has_definitions": False,
-                "has_pronouns": False
-            })
-        return chunks
+    # Temporarily using simple sentence splitting for Railway stability
+    # Smart chunking disabled to resolve 502 errors during deployment
+    logger.info("🔄 Using sentence splitting (smart chunking temporarily disabled)")
+    
+    # Simple sentence splitting
+    candidates = re.split(r'(?<=[.!?])\s+|\n+', text)
+    sentences = [candidate.strip() for candidate in candidates if candidate and candidate.strip()]
+    
+    # Convert sentences to chunk format for consistency
+    chunks = []
+    for i, sentence in enumerate(sentences):
+        chunks.append({
+            "chunk_id": f"s{i}",
+            "text": sentence,
+            "start": 0,  # Simplified for Railway compatibility
+            "end": len(sentence),
+            "sentence_count": 1,
+            "char_count": len(sentence),
+            "chunk_type": "sentence",
+            "has_definitions": False,
+            "has_pronouns": False
+        })
+    
+    logger.info(f"✓ Created {len(chunks)} sentence chunks")
+    return chunks
 
 
 def save_document_to_fallback(doc_id, title, file_name, chunks, timestamp, raw_text, metadata=None):
@@ -424,7 +402,7 @@ def save_document_to_fallback(doc_id, title, file_name, chunks, timestamp, raw_t
         "source": "uploaded",
         "raw_text": raw_text,
         "metadata": metadata or {},
-        "chunking_mode": "smart_paragraph"
+        "chunking_mode": "sentence"
     }
     fallback_documents.insert(0, new_document)
 
@@ -1522,10 +1500,10 @@ async def ingest_document(request: Dict[str, Any]):
         "status": "ingested",
         "chunk_count": chunk_count,
         "sentence_count": total_sentences,
-        "chunking_mode": "smart_paragraph",
+        "chunking_mode": "sentence",
         "created_at": timestamp,
         "triage_items_created": min(triage_created, chunk_count),
-        "message": f"Document '{title}' successfully ingested with smart chunking for annotation",
+        "message": f"Document '{title}' successfully ingested with standard sentence chunking for annotation",
         "chunking_info": {
             "total_chunks": chunk_count,
             "total_sentences": total_sentences,
