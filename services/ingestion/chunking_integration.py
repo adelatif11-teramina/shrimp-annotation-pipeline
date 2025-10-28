@@ -30,62 +30,67 @@ if HAS_DOCUMENT_INGESTION and HAS_SMART_CHUNKING:
         """Enhanced document ingestion with smart chunking support"""
         
         def __init__(self, 
-                 data_training_path: Optional[Path] = None,
-                 segmenter: str = "regex",
-                 chunking_mode: str = "smart_paragraph",  # New default!
-                 enable_llm_preprocessing: bool = False,
-                 openai_api_key: Optional[str] = None,
-                 smart_chunk_length: tuple = (150, 400)):
-        """
-        Initialize enhanced ingestion service with smart chunking.
-        
-        Args:
-            chunking_mode: "sentence", "paragraph", or "smart_paragraph" (recommended)
-            smart_chunk_length: (min_chars, max_chars) for smart chunks
-        """
-        super().__init__(data_training_path, segmenter, chunking_mode, 
-                        enable_llm_preprocessing, openai_api_key)
-        
-        # Add smart chunking capability
-        if chunking_mode == "smart_paragraph":
-            self.smart_chunker = SmartChunkingService(target_length=smart_chunk_length)
-        else:
-            self.smart_chunker = None
-    
-    def ingest_text_file(self, 
-                        file_path: Path,
-                        source: str = "paper",
-                        title: Optional[str] = None,
-                        metadata: Optional[Dict] = None) -> Document:
-        """Enhanced ingestion with smart chunking support"""
-        
-        # Use parent method for basic processing
-        doc = super().ingest_text_file(file_path, source, title, metadata)
-        
-        # Apply smart chunking if requested
-        if self.chunking_mode == "smart_paragraph" and self.smart_chunker:
-            smart_chunks = self.smart_chunker.create_smart_chunks(doc.raw_text)
+                     data_training_path: Optional[Path] = None,
+                     segmenter: str = "regex",
+                     chunking_mode: str = "smart_paragraph",  # New default!
+                     enable_llm_preprocessing: bool = False,
+                     openai_api_key: Optional[str] = None,
+                     smart_chunk_length: tuple = (150, 400)):
+            """
+            Initialize enhanced ingestion service with smart chunking.
             
-            # Replace standard chunks with smart chunks
-            doc.smart_chunks = smart_chunks
-            doc.chunks = smart_chunks
-            doc.chunk_type = "smart_paragraph"
-            doc.chunking_mode = "smart_paragraph"
+            Args:
+                chunking_mode: "sentence", "paragraph", or "smart_paragraph" (recommended)
+                smart_chunk_length: (min_chars, max_chars) for smart chunks
+            """
+            super().__init__(data_training_path, segmenter, chunking_mode, 
+                            enable_llm_preprocessing, openai_api_key)
             
-            # Update metadata with smart chunking stats
-            stats = self.smart_chunker.get_chunking_statistics(smart_chunks)
-            doc.metadata.update({
-                'smart_chunking_stats': stats,
-                'chunk_count': len(smart_chunks),
-                'avg_chunk_length': stats.get('avg_chars_per_chunk', 0),
-                'context_preservation': {
-                    'chunks_with_definitions': stats.get('chunks_with_definitions', 0),
-                    'chunks_with_pronouns': stats.get('chunks_with_pronouns', 0),
-                    'quality_score': stats.get('quality_score', 0)
-                }
-            })
+            # Add smart chunking capability
+            if chunking_mode == "smart_paragraph":
+                self.smart_chunker = SmartChunkingService(target_length=smart_chunk_length)
+            else:
+                self.smart_chunker = None
         
-        return doc
+        def ingest_text_file(self, 
+                            file_path: Path,
+                            source: str = "paper",
+                            title: Optional[str] = None,
+                            metadata: Optional[Dict] = None) -> Document:
+            """Enhanced ingestion with smart chunking support"""
+            
+            # Use parent method for basic processing
+            doc = super().ingest_text_file(file_path, source, title, metadata)
+            
+            # Apply smart chunking if requested
+            if self.chunking_mode == "smart_paragraph" and self.smart_chunker:
+                smart_chunks = self.smart_chunker.create_smart_chunks(doc.raw_text)
+                
+                # Replace standard chunks with smart chunks
+                doc.smart_chunks = smart_chunks
+                doc.chunks = smart_chunks
+                doc.chunk_type = "smart_paragraph"
+                doc.chunking_mode = "smart_paragraph"
+                
+                # Update metadata with smart chunking stats
+                stats = self.smart_chunker.get_chunking_statistics(smart_chunks)
+                doc.metadata.update({
+                    'smart_chunking_stats': stats,
+                    'chunk_count': len(smart_chunks),
+                    'avg_chunk_length': stats.get('avg_chars_per_chunk', 0),
+                    'context_preservation': {
+                        'chunks_with_definitions': stats.get('chunks_with_definitions', 0),
+                        'chunks_with_pronouns': stats.get('chunks_with_pronouns', 0),
+                        'quality_score': stats.get('quality_score', 0)
+                    }
+                })
+            
+            return doc
+else:
+    # Fallback class if dependencies not available
+    class ImprovedDocumentIngestionService:
+        def __init__(self, *args, **kwargs):
+            raise ImportError("Smart chunking dependencies not available")
 
 
 def migrate_to_smart_chunking():
