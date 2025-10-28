@@ -7,14 +7,29 @@ existing annotation pipeline with minimal code changes.
 
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from services.ingestion.document_ingestion import DocumentIngestionService, Document
-from services.ingestion.smart_chunking import SmartChunkingService, SmartChunk
+
+# Handle imports safely for Railway deployment
+try:
+    from services.ingestion.document_ingestion import DocumentIngestionService, Document
+    HAS_DOCUMENT_INGESTION = True
+except ImportError:
+    HAS_DOCUMENT_INGESTION = False
+    print("Warning: Document ingestion service not available")
+
+try:
+    from services.ingestion.smart_chunking import SmartChunkingService, SmartChunk
+    HAS_SMART_CHUNKING = True
+except ImportError:
+    HAS_SMART_CHUNKING = False
+    print("Warning: Smart chunking service not available")
 
 
-class ImprovedDocumentIngestionService(DocumentIngestionService):
-    """Enhanced document ingestion with smart chunking support"""
-    
-    def __init__(self, 
+# Only define the class if dependencies are available
+if HAS_DOCUMENT_INGESTION and HAS_SMART_CHUNKING:
+    class ImprovedDocumentIngestionService(DocumentIngestionService):
+        """Enhanced document ingestion with smart chunking support"""
+        
+        def __init__(self, 
                  data_training_path: Optional[Path] = None,
                  segmenter: str = "regex",
                  chunking_mode: str = "smart_paragraph",  # New default!

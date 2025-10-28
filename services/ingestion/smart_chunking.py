@@ -8,7 +8,14 @@ problem in sentence-level annotation while avoiding the cognitive overload of fu
 import re
 from typing import List, Tuple, Dict, Optional, Any
 from dataclasses import dataclass, field
-from services.ingestion.document_ingestion import Sentence, DocumentIngestionService
+
+# Minimal sentence class to avoid circular imports
+@dataclass
+class Sentence:
+    sent_id: str
+    start: int
+    end: int
+    text: str
 
 
 @dataclass 
@@ -68,7 +75,36 @@ class SmartChunkingService:
             target_length: (min_chars, max_chars) for optimal chunk size
         """
         self.min_length, self.max_length = target_length
-        self.sentence_service = DocumentIngestionService()
+    
+    def segment_sentences(self, text: str) -> List[Sentence]:
+        """Simple sentence segmentation for smart chunking"""
+        if not text:
+            return []
+        
+        # Simple regex-based sentence splitting
+        pattern = r'(?<=[.!?])\s+(?=[A-Z])'
+        sent_texts = re.split(pattern, text)
+        
+        sentences = []
+        offset = 0
+        for i, sent_text in enumerate(sent_texts):
+            if not sent_text.strip():
+                continue
+                
+            start = text.find(sent_text, offset)
+            if start == -1:
+                start = offset
+            end = start + len(sent_text)
+            
+            sentences.append(Sentence(
+                sent_id=f"s{i}",
+                start=start,
+                end=end,
+                text=sent_text.strip()
+            ))
+            offset = end
+        
+        return sentences
     
     def create_smart_chunks(self, text: str) -> List[SmartChunk]:
         """
@@ -82,7 +118,7 @@ class SmartChunkingService:
         5. Handle cross-sentence relations
         """
         # Get sentence segmentation first
-        sentences = self.sentence_service.segment_sentences(text)
+        sentences = self.segment_sentences(text)
         
         if not sentences:
             return []
